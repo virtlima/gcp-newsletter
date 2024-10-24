@@ -15,8 +15,8 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 vertexai.init(project=PROJECT_ID, location="us-central1")
 model = GenerativeModel("gemini-1.5-flash-002")
 
-# Define the RSS feed URL
-rss_url = "https://blog.google/products/google-cloud/rss/"
+# Define the RSS feed URL - "https://blog.google/products/google-cloud/rss/"
+rss_url = "https://snownews.appspot.com/feed"
 
 # Parse the RSS feed
 ssl._create_default_https_context = ssl._create_unverified_context
