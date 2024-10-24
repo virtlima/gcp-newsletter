@@ -2,11 +2,17 @@ import feedparser
 import json
 import datetime
 import ssl
+import os
+from dotenv import load_dotenv
 
 import vertexai
 from vertexai.generative_models import GenerativeModel
 
-vertexai.init(project="myproject", location="us-central1")
+load_dotenv()
+PROJECT_ID = os.getenv("PROJECT_ID")
+
+
+vertexai.init(project=PROJECT_ID, location="us-central1")
 model = GenerativeModel("gemini-1.5-flash-002")
 
 # Define the RSS feed URL
