@@ -2,18 +2,10 @@ import feedparser
 import json
 import datetime
 import ssl
-import os
 from dotenv import load_dotenv
-
-import vertexai
-from vertexai.generative_models import GenerativeModel
+import gemini_wrapper
 
 load_dotenv()
-PROJECT_ID = os.getenv("PROJECT_ID")
-
-
-vertexai.init(project=PROJECT_ID, location="us-central1")
-model = GenerativeModel("gemini-1.5-flash-002")
 
 USER_PERSONA = ["CXO","Dev"]
 USER_INDUSTRY = ["Financial","Retail"]
@@ -24,7 +16,6 @@ rss_url = "https://snownews.appspot.com/feed"
 # Parse the RSS feed
 ssl._create_default_https_context = ssl._create_unverified_context
 feed = feedparser.parse(rss_url)
-print(feed)
 
 # Extract the last week's entries
 last_week_entries = []
@@ -36,74 +27,41 @@ for entry in feed.entries:
             "title": entry.title,
             "link": entry.link,
             "published": entry.published,
-            "summary": entry.summary,
+            "metadata": entry.summary,
         })
 
-with open(f"last_week_entries.json", "w") as f:
+print(len(last_week_entries))
+
+# Write last week entries to output file
+with open(f"data/last_week_entries.json", "w") as f:
     json.dump(last_week_entries, f)
 
-# Create a list to store the summaries
-summaries = []
+# Generate summaries
+summaries = gemini_wrapper.generate_summaries(last_week_entries)
 
-# Iterate over the last week's entries and generate summaries
-for entry in last_week_entries:
-    # Construct the prompt for the generative model
-    summary_prompt = f"""
-    Provide a very short summary, no more than three sentences, for this article:
-    Title: {entry['title']}
-    Link: {entry['link']}
-    Summary: {entry['summary']}
-    """
-
-    # Generate the summary using the generative model
-    summary_response = model.generate_content(contents=summary_prompt).text
-
-    # Append the summary to the list
-    summaries.append({
-        "title": entry['title'],
-        "link": entry['link'],
-        "summary": summary_response,
-    })
-
-# Create a recommendation from the summaries
-rec_prompt = f"""
-Based on the user industry and persona, recommend three articles from the list of summmaries provided.
-User Industry: {USER_INDUSTRY[1]}
-User Persona: {USER_PERSONA[0]}
-
-{summaries}
-
-Include the user_industry and user_persona in the output json.
-Include recommendation_reason, recommendation_title, recommendation_link, and recommendation_summary in the output json within a list object called 'recommendations'.
-Include a summary_text for why you recommended these articles in the output json. If there weren't any recommendations then explain why.
-"""
-
-rec_response = model.generate_content(contents=rec_prompt,
-                                      generation_config={"response_mime_type":"application/json"}
-                                      ).text
-
-with open(f"summaries.json", "w") as f:
+# Write summaries to output file
+with open(f"data/summaries.json", "w") as f:
     json.dump(summaries, f)
 
-# Convert the summaries to JSON format
-summary_json = json.dumps(summaries)
+# Generate recommendations
+rec_json = gemini_wrapper.generate_recommendation(USER_INDUSTRY[0],
+                                                USER_PERSONA[0],
+                                                summaries)
 
-# Convert output of rec response
-# NOTE: should create checks in case LLM doesn't respond in JSON format
-is_json = True
-try:
-  rec_json = json.loads(rec_response)
-except json.JSONDecodeError as e:
-  print(f"Invalid JSON string: {e}")
-  is_json = False
-
-# Print the JSON data
-print(summary_json)
+# Write recs to output file
+with open(f"data/recommended_articles.json", "w") as f:
+    json.dump(rec_json, f)
 
 # Format output
 newsletter = f"""\n
 Hi!
 
 Recs: {rec_json['summary_text']}
-"""
+
+""" + "\n".join([f"{i+1}. {item['recommendation_title']}\n\t\
+                 Summary: {item['recommendation_summary']}\n\t\
+                 Reason: {item['recommendation_reason']}\n\t\
+                 Link: {item['recommendation_link']}"
+                 for i, item in enumerate(rec_json["recommendations"])]) + "\n"
+
 print(newsletter)
