@@ -11,7 +11,7 @@ from vertexai.generative_models import GenerativeModel
 # IN: RSS feed from last week
 # OUT: List of Summarized articles with title,
 #      link and summary
-def generate_summaries(last_week_entries):
+def generate_summaries(last_entries):
   """
   Generate a short summary for each articles.
   Must have access to article content otherwise the
@@ -30,8 +30,7 @@ def generate_summaries(last_week_entries):
   summaries = []
 
   # Iterate over the last week's entries and generate summaries
-  # TODO: For testing, restricting this to 5 entries
-  for entry in last_week_entries[:5]:
+  for entry in last_entries:
       # Construct the prompt for the generative model
       summary_prompt = f"""
       Provide a very short summary, no more than three sentences, for this article:

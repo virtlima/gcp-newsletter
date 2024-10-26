@@ -9,10 +9,13 @@ Safety is off by default.
 import vertexai, os
 from vertexai.preview.generative_models import GenerativeModel, Part, SafetySetting, Tool
 from vertexai.preview.generative_models import grounding
+from dotenv import load_dotenv
 
-PROJECT_ID = os.getenv("PROJECT_ID")
+load_dotenv()
 
-vertexai.init(project=PROJECT_ID, location="us-central1")
+PROJECT_ID = os.environ.get("PROJECT_ID")
+
+vertexai.init(project=None, location="us-central1")
 
 def generate(prompt, temp = 0.1, safety_off = True, gwgs = False, json_on = False):
   generation_config = {
