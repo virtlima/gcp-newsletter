@@ -1,2 +1,9 @@
-# gcp-newsletter
-An application that pulls GCP RSS Feeds and creates a newsletter that include summaries of the articles. 
+# A gcp-newsletter Flet app
+
+An example of a minimal Flet app.
+
+To run the app:
+
+```
+flet run [app_directory]
+```
