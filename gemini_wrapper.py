@@ -53,12 +53,12 @@ def generate_summaries(last_entries):
 
   return summaries
 
-def generate_recommendation(user_industry, user_persona, summaries):
+def generate_recommendation(user_topic, user_persona, summaries):
   """
   Makes a call to Gemini to get recommendations based on an audience group.
 
   Arguments:
-    - user_industry (string): what industry vertical is the audience interested in
+    - user_topic (string): what industry vertical is the audience interested in
     - user_persona (string): what level of business/technical depth do they require
 
   Return:
@@ -68,12 +68,12 @@ def generate_recommendation(user_industry, user_persona, summaries):
   # Create a recommendation from the summaries
   rec_prompt = f"""
   Based on the user industry and persona, recommend at most three articles from the list of summmaries provided.
-  User Industry: {user_industry}
+  User Industry: {user_topic}
   User Persona: {user_persona}
 
   {summaries}
 
-  Include the user_industry and user_persona in the output json.
+  Include the user_topic and user_persona in the output json.
   Include recommendation_reason, recommendation_title, recommendation_link, and recommendation_summary in the output json within a list object called 'recommendations'.
   Include a summary_text for why you recommended these articles in the output json. If there weren't any recommendations then explain why.
   """
