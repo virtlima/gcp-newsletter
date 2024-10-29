@@ -3,6 +3,8 @@ import flet as ft
 def main(page: ft.Page):
     def button_clicked(e):
         p.value = f"Values: '{persona.value}', '{industry.value}', '{email.value}'"
+        # Call newsletter_service.py to Generate Newsletter, pass values along
+        # Return Newsletter Content to Display on Webpage. 
         page.update()
 
     p = ft.Text()
