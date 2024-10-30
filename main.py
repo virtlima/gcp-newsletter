@@ -22,17 +22,25 @@ def main(page: ft.Page):
         )
         page.add(loading)
         # Call newsletter_service.py to Generate Newsletter, pass values along
-        n = ft.Text(value="waiting...")
-        c = ft.Column()
-        page.add(c, n)
         newsletter = newsletter_service.get_newsletter_from_sources(
             source=rss_url,
             time_period=time_period.value,
             user_persona=persona.value,
             user_topic=topic.value,
         )
-        n.value = newsletter
         # Return Newsletter Content to Display on Webpage.
+        newsletter_container = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text(value=newsletter),
+                ],
+                scroll=ft.ScrollMode.AUTO,  # Enable scrolling
+                expand=True,  # Allow the container to expand to fit content
+            ),
+            expand=True,  # Allow the container to take up available space
+        )
+        
+        page.add(newsletter_container)  # Add the container to the page
         page.update()
 
     p = ft.Text()
