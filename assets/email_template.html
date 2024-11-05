@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Cloud Newsletter</title>
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+
+      background-color: #ffffff;
+      padding: 20px;
+
+    }
+
+    h1 {
+      color: black;
+      /* Google blue */
+    }
+
+    .header {
+      background-color: #4285F4;
+      color: #ffffff;
+      padding: 10px 0;
+      text-align: center;
+    }
+
+    .article {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+
+    .article img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 5px;
+    }
+
+    .article h3 {
+      color: black;
+    }
+
+    .article p {
+      color: black;
+    }
+
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #4285F4;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 5px;
+
+    }
+
+    .footer {
+      text-align: center;
+      color: #777;
+      font-size: 12px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Google Cloud Newsletter</h1>
+    </div>
+
+    <h2>Recommended Articles</h2>
+    <p>{{ recommended_articles.summary_text }}</p>
+    <div class="articles">
+      {% for article in recommended_articles.recommendations %}
+      <div class="article">
+        <h3>{{ article.recommendation_title }}</h3>
+        <p>{{ article.recommendation_summary }}</p>
+        <p>{{ article.recommendation_reason }}</p>
+        <a href="{{ article.recommendation_link }}" class="button">Read More</a>
+      </div>
+      {% endfor %}
+    </div>
+
+    <h2>All Articles</h2>
+    <div class="articles">
+      {% for article in all_articles %}
+      <h3><a href="{{ article.link }}">{{ article.title }}</a></h3>
+      <p>{{ article.summary }}</p>
+      {% endfor %}
+    </div>
+
+    <div class="footer">
+      <p>You received this email because you subscribed to the Google Cloud Newsletter.</p>
+      <p>© {{ year }} Google Cloud. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+
+</html>

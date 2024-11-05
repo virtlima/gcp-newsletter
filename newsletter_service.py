@@ -98,4 +98,19 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
 
     print(newsletter)
 
-    return newsletter
+    return newsletter, summaries, rec_json
+
+
+def send_email_test():
+    _, summaries, rec_json = get_newsletter_from_sources()
+    email_service.send_email(sender_email="geiger.ljo@gmail.com",
+                             sender_password=os.getenv("SENDER_PASSWORD"),
+                             receiver_email="lukasgeiger@google.com",
+                             subject="GCP Newsletter",
+                             recommendations=rec_json,
+                             summaries=summaries)
+
+
+# Enable this and run python3 newsletter_service.py for testing
+# Not the most ideal but fine for temp testing
+# send_email_test()
