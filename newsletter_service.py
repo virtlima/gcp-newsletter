@@ -2,7 +2,7 @@ import feedparser
 import json
 import datetime
 import ssl
-import gemini_wrapper, email_service
+import gemini_wrapper, email_service, db_service
 import os
 from dotenv import load_dotenv
 
@@ -71,6 +71,8 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     # Write summaries to output file
     with open(f"data/summaries.json", "w") as f:
         json.dump(summaries, f)
+
+    db_service.write_to_firestore('summaries', summaries)
 
     # Generate recommendations
     rec_json = gemini_wrapper.generate_recommendation(
