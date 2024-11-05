@@ -81,6 +81,8 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     # Write recs to output file
     with open(f"data/recommended_articles.json", "w") as f:
         json.dump(rec_json, f)
+    
+    db_service.write_to_firestore('recommendations', rec_json)
 
     # Format output
     rec_string = f"Recs: {rec_json['summary_text']}\n\n" + "".join([
@@ -97,6 +99,8 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
         for j, summary in enumerate(summaries)
     ]) + "\n"
     newsletter = f"""Hi!\n\n""" + rec_string + summary_string
+
+    db_service.write_to_firestore('newsletter', newsletter)
 
     print(newsletter)
 
