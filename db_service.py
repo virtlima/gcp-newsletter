@@ -28,6 +28,7 @@ def write_to_firestore(type, newsletter):
     except Exception as e:
         print(f"Error writing newsletter to Firestore: {e}")
 
+    return doc_ref.id
 
 def get_newsletter_from_firestore(document_id):
     """Retrieves newsletter data from Firestore.
