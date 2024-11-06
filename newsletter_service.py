@@ -2,7 +2,7 @@ import feedparser
 import json
 import datetime
 import ssl
-import gemini_wrapper, email_service
+import gemini_wrapper, email_service, db_service
 import os
 from dotenv import load_dotenv
 
@@ -68,31 +68,33 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     # Generate summaries
     summaries = gemini_wrapper.generate_summaries(entries)
 
-    # Write summaries to output file
-    with open(f"data/summaries.json", "w") as f:
-        json.dump(summaries, f)
+    # Write summaries to firestore
+    wr_summaries = db_service.write_to_firestore('summaries', summaries)
 
     # Generate recommendations
     rec_json = gemini_wrapper.generate_recommendation(
         user_topic=user_topic, user_persona=user_persona, summaries=summaries)
 
-    # Write recs to output file
-    with open(f"data/recommended_articles.json", "w") as f:
-        json.dump(rec_json, f)
+    # Write recs to firestore
+    wr_rec = db_service.write_to_firestore('recommendations', rec_json)
 
+    # Grabbing Recommendations and Summaries from Firestore
+    get_rec = db_service.get_newsletter_from_firestore(wr_rec)['newsletter']
+    get_sum = db_service.get_newsletter_from_firestore(wr_summaries)['newsletter']
+    
     # Format output
-    rec_string = f"Recs: {rec_json['summary_text']}\n\n" + "".join([
+    rec_string = f"Recs: {get_rec['summary_text']}\n\n" + "".join([
         f"{i+1}. {rec['recommendation_title']}\n\
                   Summary: {rec['recommendation_summary']}\n\
                   Reason: {rec['recommendation_reason']}\n\
                   Link: {rec['recommendation_link']}\n\n"
-        for i, rec in enumerate(rec_json["recommendations"])
+        for i, rec in enumerate(get_rec["recommendations"])
     ]) + "\n"
     summary_string = "Complete List of Articles:\n\n" + "".join([
         f"{j+1}. {summary['title']}\n\
                   Summary: {summary['summary']}\
                   Link: {summary['link']}\n\n"
-        for j, summary in enumerate(summaries)
+        for j, summary in enumerate(get_sum)
     ]) + "\n"
     newsletter = f"""Hi!\n\n""" + rec_string + summary_string
 
