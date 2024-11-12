@@ -31,6 +31,14 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     feed = feedparser.parse(source)
 
     entries = []
+    
+    # Getting all personas and topics stored in settings document in the newsletter_components collection
+    get_persona = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['persona']
+    get_topic = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['topic']
+
+    # Create a matrix to iterate through every combination of persona and topics
+    persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
+
     # Extract the entries depending on time period specified
     if time_period.lower() == "day":
 
@@ -61,46 +69,58 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
 
     print(len(entries))
 
-    # Write last week entries to output file
-    with open(f"data/entries.json", "w") as f:
-        json.dump(entries, f)
-
     # Generate summaries
     summaries = gemini_wrapper.generate_summaries(entries)
 
     # Write summaries to firestore
-    wr_summaries = db_service.write_to_firestore('summaries', summaries)
+    wr_summaries = db_service.write_to_firestore('newsletter_components', summaries, 'summaries')
 
-    # Generate recommendations
-    rec_json = gemini_wrapper.generate_recommendation(
-        user_topic=user_topic, user_persona=user_persona, summaries=summaries)
+    # Create a dictionary to store recommendations for all persona-topic combinations
+    all_recommendations = {}
 
-    # Write recs to firestore
-    wr_rec = db_service.write_to_firestore('recommendations', rec_json)
+    # Grabbing Summaries from Firestore
+    get_sum = db_service.get_newsletter_from_firestore('newsletter_components', wr_summaries)['summaries']
 
-    # Grabbing Recommendations and Summaries from Firestore
-    get_rec = db_service.get_newsletter_from_firestore(wr_rec)['newsletter']
-    get_sum = db_service.get_newsletter_from_firestore(wr_summaries)['newsletter']
-    
+    for persona, topic in persona_topic_matrix:
+        print(f"Processing persona: {persona}, topic: {topic}")
+        rec_json = gemini_wrapper.generate_recommendation(
+            user_topic=topic, user_persona=persona, summaries=get_sum)
+        
+        # Store recommendations under the corresponding persona-topic key
+        all_recommendations[f"{persona}-{topic}"] = rec_json
+
+    # Write all recommendations to a single document in Firestore
+    wr_rec = db_service.write_to_firestore('newsletter_components', all_recommendations)
+
+    # Grabbing Recommendations from Firestore
+    get_rec = db_service.get_newsletter_from_firestore('newsletter_components', wr_rec)
+
     # Format output
-    rec_string = f"Recs: {get_rec['summary_text']}\n\n" + "".join([
-        f"{i+1}. {rec['recommendation_title']}\n\
-                  Summary: {rec['recommendation_summary']}\n\
-                  Reason: {rec['recommendation_reason']}\n\
-                  Link: {rec['recommendation_link']}\n\n"
-        for i, rec in enumerate(get_rec["recommendations"])
-    ]) + "\n"
-    summary_string = "Complete List of Articles:\n\n" + "".join([
-        f"{j+1}. {summary['title']}\n\
-                  Summary: {summary['summary']}\
-                  Link: {summary['link']}\n\n"
-        for j, summary in enumerate(get_sum)
-    ]) + "\n"
-    newsletter = f"""Hi!\n\n""" + rec_string + summary_string
+    for persona, topic in persona_topic_matrix:
 
-    print(newsletter)
+        # Accessing summary_text (assuming it's a separate key in rec_json)
+        rec_string = f"Recs: {get_rec[f'{persona}-{topic}'].get('summary_text', '')}\n\n" 
 
-    return newsletter, summaries, rec_json
+        # Iterating over recommendations (now a list)
+        rec_string += "".join([
+            f"{i+1}. {rec.get('recommendation_title', '')}\n\
+                      Summary: {rec.get('recommendation_summary', '')}\n\
+                      Reason: {rec.get('recommendation_reason', '')}\n\
+                      Link: {rec.get('recommendation_link', '')}\n\n"
+            for i, rec in enumerate(get_rec[f"{persona}-{topic}"].get('recommendations', []))
+        ]) + "\n"
+
+        summary_string = "Complete List of Articles:\n\n" + "".join([
+            f"{j+1}. {summary['title']}\n\
+                      Summary: {summary['summary']}\
+                      Link: {summary['link']}\n\n"
+            for j, summary in enumerate(get_sum)
+        ]) + "\n"
+
+        db_service.write_to_firestore('newsletters', rec_string + summary_string, f"{persona}-{topic}")
+
+    return summaries, all_recommendations
+
 
 
 def send_email_test():
