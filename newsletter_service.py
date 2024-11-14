@@ -20,8 +20,8 @@ Response:
   - newsletter (string): formatted newsletter with recommendation and all article summaries
 """
 # Getting all personas and topics stored in settings document in the newsletter_components collection
-get_persona = db_service.get_newsletter_from_firestore('gcp_newsletter', 'settings')['persona']
-get_topic = db_service.get_newsletter_from_firestore('gcp_newsletter', 'settings')['topic']
+get_persona = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['persona']
+get_topic = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['topic']
 
 # Create a matrix to iterate through every combination of persona and topics
 persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
@@ -73,13 +73,13 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
         }
 
     # Write summaries to firestore
-    wr_summaries = db_service.write_to_firestore('newsletter_summaries', 'summaries', day_summaries)
+    wr_summaries = db_service.write_to_firestore('newsletter_summaries', day_summaries)
 
     # Create a dictionary to store recommendations for all persona-topic combinations
     all_recommendations = {}
 
     # Grabbing Summaries from Firestore
-    get_sum = db_service.get_newsletter_from_firestore('newsletter_summaries', wr_summaries)['summaries']
+    get_sum = db_service.get_components_from_firestore('newsletter_summaries', wr_summaries)['summaries']
 
     for persona, topic in persona_topic_matrix:
         print(f"Processing persona: {persona}, topic: {topic}")
@@ -92,19 +92,41 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     all_recommendations['timestamp'] = datetime.datetime.now()
 
     # Write all recommendations to a single document in Firestore
-    wr_rec = db_service.write_to_firestore('newsletter_recommendations', 
-                                           'recommendations', 
-                                           all_recommendations)
+    wr_rec = db_service.write_to_firestore('newsletter_recommendations', all_recommendations)
 
 def generate_newsletter_from_db(time_period="day",
                                 user_topic="Any",
-                                user_persona="All"):        
-    
+                                user_persona="All"): 
+
+    if time_period.lower() == "day":
+        today = datetime.date.today().strftime("%m_%d_%Y")
+        # Grabbing Summaries from Firestore
+        summaries = db_service.get_components_from_firestore('newsletter_summaries', wr)['summaries']
+
+        # Grabbing Recommendations from Firestore
+        recommendations = db_service.get_components_from_firestore('newsletter_recommendations', wr_rec)
+
+
+    elif time_period.lower() == "week":
+        for entry in feed.entries:
+            # Check if the entry was published within the last week
+            published_date = datetime.datetime(*entry.published_parsed[:6])
+            if published_date.isocalendar().week == datetime.datetime.now(
+            ).isocalendar().week:
+                entries.append({
+                    "title": entry.title,
+                    "link": entry.link,
+                    "published": entry.published,
+                    "metadata": entry.summary,
+                })
+    else:
+        print("Please define time period")
+
     # Grabbing Summaries from Firestore
-    get_sum = db_service.get_newsletter_from_firestore('newsletter_summaries', wr_summaries)['summaries']
+    get_sum = db_service.get_components_from_firestore('newsletter_summaries', wr)['summaries']
 
     # Grabbing Recommendations from Firestore
-    get_rec = db_service.get_newsletter_from_firestore('newsletter_recommendations', wr_rec)
+    get_rec = db_service.get_components_from_firestore('newsletter_recommendations', wr_rec)
 
     # Format output
     for persona, topic in persona_topic_matrix:

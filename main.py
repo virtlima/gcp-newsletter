@@ -1,8 +1,9 @@
 import flet as ft
+import os
 import newsletter_service, db_service
 
-USER_PERSONA = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['persona']
-USER_TOPIC = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['topic']
+USER_PERSONA = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['persona']
+USER_TOPIC = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['topic']
 TIME_PERIOD = ["day", "week"]
 
 # Define the RSS feed URL - "https://blog.google/products/google-cloud/rss/"

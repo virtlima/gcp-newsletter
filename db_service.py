@@ -8,7 +8,7 @@ cred = credentials.ApplicationDefault()
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-def write_to_firestore(collection, component, data):
+def write_to_firestore(collection, data):
     """Writes data to Firestore.
 
     Args:
@@ -22,7 +22,7 @@ def write_to_firestore(collection, component, data):
     try:
         # Generate a key based on today's date
         today = datetime.date.today().strftime("%m_%d_%Y")
-        doc_ref = db.collection(collection).document(f"{today}_{component}")
+        doc_ref = db.collection(collection).document(f"{today}")
         doc_ref.set(data)
         print(f"Data written to Firestore with ID: {doc_ref.id}")
     except Exception as e:
@@ -30,7 +30,7 @@ def write_to_firestore(collection, component, data):
 
     return doc_ref.id
 
-def get_newsletter_from_firestore(collection, document_id):
+def get_components_from_firestore(collection, document_id):
     """Retrieves a document from a Firestore collection.
 
     Args:
