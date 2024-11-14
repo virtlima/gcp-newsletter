@@ -1,48 +1,44 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
-import os
-from dotenv import load_dotenv
 import datetime
 
-load_dotenv()
 
 # Initialize Firestore
 cred = credentials.ApplicationDefault()
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-def write_to_firestore(collection, component,type='none'):
-    """Writes newsletter data to Firestore.
+def write_to_firestore(collection, component, data):
+    """Writes data to Firestore.
 
     Args:
-        newsletter_data (dict): A dictionary containing newsletter data.  Must include a 'user_email' key.
+        collection (str): The name of the Firestore collection.
+        component (str): A string identifier for the data component.
+        data (dict): A dictionary containing the data to be written.
+
+    Returns:
+        str: The ID of the document written to Firestore.
     """
     try:
         # Generate a key based on today's date
-        today = datetime.date.today().strftime("%m-%d-%Y")
-        if type != 'none':
-            doc_ref = db.collection(collection).document()
-            doc_ref.set({
-                type: component,
-                'timestamp': datetime.datetime.now()
-                })
-        else:
-            doc_ref = db.collection(collection).document()
-            doc_ref.set(component)
-        print(f"Newsletter written to Firestore with ID: {doc_ref.id}")
+        today = datetime.date.today().strftime("%m_%d_%Y")
+        doc_ref = db.collection(collection).document(f"{today}_{component}")
+        doc_ref.set(data)
+        print(f"Data written to Firestore with ID: {doc_ref.id}")
     except Exception as e:
-        print(f"Error writing newsletter to Firestore: {e}")
+        print(f"Error writing data to Firestore: {e}")
 
     return doc_ref.id
 
 def get_newsletter_from_firestore(collection, document_id):
-    """Retrieves newsletter data from Firestore.
+    """Retrieves a document from a Firestore collection.
 
     Args:
-        user_email (str): The email address associated with the newsletter.
+        collection (str): The name of the Firestore collection.
+        document_id (str): The ID of the document to retrieve.
 
     Returns:
-        dict: The newsletter data, or None if not found.
+        dict: The document data as a dictionary, or None if the document is not found.
     """
     try:
         doc_ref = db.collection(collection).document(document_id)
