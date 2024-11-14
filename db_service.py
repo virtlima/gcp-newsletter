@@ -19,6 +19,7 @@ def write_to_firestore(collection, component,type='none'):
     """
     try:
         # Generate a key based on today's date
+        today = datetime.date.today().strftime("%m-%d-%Y")
         if type != 'none':
             doc_ref = db.collection(collection).document()
             doc_ref.set({

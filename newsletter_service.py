@@ -19,29 +19,24 @@ Arguments:
 Response:
   - newsletter (string): formatted newsletter with recommendation and all article summaries
 """
+# Getting all personas and topics stored in settings document in the newsletter_components collection
+get_persona = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['persona']
+get_topic = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['topic']
 
+# Create a matrix to iterate through every combination of persona and topics
+persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
 
 def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
-                                time_period="day",
-                                user_topic="Any",
-                                user_persona="All"):
+                                time_period="day"):
 
     # Parse the RSS feed
     ssl._create_default_https_context = ssl._create_unverified_context
     feed = feedparser.parse(source)
 
     entries = []
-    
-    # Getting all personas and topics stored in settings document in the newsletter_components collection
-    get_persona = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['persona']
-    get_topic = db_service.get_newsletter_from_firestore('newsletter_components', 'settings')['topic']
-
-    # Create a matrix to iterate through every combination of persona and topics
-    persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
 
     # Extract the entries depending on time period specified
     if time_period.lower() == "day":
-
         for entry in feed.entries:
             # Check if the entry was published within the last week
             published_date = datetime.datetime(*entry.published_parsed[:6])
@@ -92,14 +87,20 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     # Write all recommendations to a single document in Firestore
     wr_rec = db_service.write_to_firestore('newsletter_components', all_recommendations)
 
+def generate_newsletter_from_db(time_period="day",
+                                user_topic="Any",
+                                user_persona="All"):        
+    
+    # Grabbing Summaries from Firestore
+    get_sum = db_service.get_newsletter_from_firestore('newsletter_components', wr_summaries)['summaries']
+
     # Grabbing Recommendations from Firestore
     get_rec = db_service.get_newsletter_from_firestore('newsletter_components', wr_rec)
 
     # Format output
     for persona, topic in persona_topic_matrix:
-
         # Accessing summary_text (assuming it's a separate key in rec_json)
-        rec_string = f"Recs: {get_rec[f'{persona}-{topic}'].get('summary_text', '')}\n\n" 
+        rec_string = f"Recs: {get_rec[f'{user_persona}-{user_topic}'].get('summary_text', '')}\n\n" 
 
         # Iterating over recommendations (now a list)
         rec_string += "".join([
@@ -107,7 +108,7 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
                       Summary: {rec.get('recommendation_summary', '')}\n\
                       Reason: {rec.get('recommendation_reason', '')}\n\
                       Link: {rec.get('recommendation_link', '')}\n\n"
-            for i, rec in enumerate(get_rec[f"{persona}-{topic}"].get('recommendations', []))
+            for i, rec in enumerate(get_rec[f"{user_persona}-{user_topic}"].get('recommendations', []))
         ]) + "\n"
 
         summary_string = "Complete List of Articles:\n\n" + "".join([
@@ -117,9 +118,9 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
             for j, summary in enumerate(get_sum)
         ]) + "\n"
 
-        db_service.write_to_firestore('newsletters', rec_string + summary_string, f"{persona}-{topic}")
+        newsletter = f"""Hi!\n\n""" + rec_string + summary_string
 
-    return summaries, all_recommendations
+    return newsletter
 
 
 
@@ -132,7 +133,8 @@ def send_email_test():
                              recommendations=rec_json,
                              summaries=summaries)
 
-
 # Enable this and run python3 newsletter_service.py for testing
-# Not the most ideal but fine for temp testing
-# send_email_test()
+if __name__ == "__main__":
+    get_newsletter_from_sources() # This will run when the script is executed
+    # generate_newsletter_from_db(wr_summaries, wr_rec)
+    # send_email_test() # Call other functions if needed
