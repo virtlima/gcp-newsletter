@@ -61,32 +61,17 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     entries = []
 
     # Extract the entries depending on time period specified
-    if time_period.lower() == "day":
-        for entry in feed.entries:
-            # Check if the entry was published within the last week
-            published_date = datetime.datetime(*entry.published_parsed[:6])
-            yesterday = datetime.date.today() - datetime.timedelta(days=1)
-            if published_date.date() == yesterday:
-                entries.append({
-                    "title": entry.title,
-                    "link": entry.link,
-                    "published": entry.published,
-                    "metadata": entry.summary,
-                })
-    elif time_period.lower() == "week":
-        for entry in feed.entries:
-            # Check if the entry was published within the last week
-            published_date = datetime.datetime(*entry.published_parsed[:6])
-            if published_date.isocalendar().week == datetime.datetime.now(
-            ).isocalendar().week:
-                entries.append({
-                    "title": entry.title,
-                    "link": entry.link,
-                    "published": entry.published,
-                    "metadata": entry.summary,
-                })
-    else:
-        print("Please define time period")
+    for entry in feed.entries:
+        # Check if the entry was published within the last week
+        published_date = datetime.datetime(*entry.published_parsed[:6])
+        yesterday = datetime.date.today() - datetime.timedelta(days=1)
+        if published_date.date() == yesterday:
+            entries.append({
+                "title": entry.title,
+                "link": entry.link,
+                "published": entry.published,
+                "metadata": entry.summary,
+            })
 
     print(len(entries))
 
