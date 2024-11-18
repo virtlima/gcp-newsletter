@@ -3,9 +3,25 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import datetime
 import ssl
-import gemini_wrapper
+import sys
 import os
 from dotenv import load_dotenv
+
+# Get the absolute path of the current file
+current_file_path = os.path.abspath(__file__)
+
+# Get the directory containing the current file
+current_dir = os.path.dirname(current_file_path)
+
+# Get the parent directory
+parent_dir = os.path.dirname(current_dir)
+
+# Add the parent directory to sys.path
+sys.path.insert(0, parent_dir)
+
+# Now you can import the module
+import gemini_wrapper
+
 
 load_dotenv()
 # Initialize Firestore

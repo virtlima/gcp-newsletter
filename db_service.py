@@ -52,6 +52,31 @@ def get_components_from_firestore(collection, document_id):
         print(f"Error retrieving newsletter from Firestore: {e}")
         return None
 
+def get_documents_for_past_week(collection):
+    """Retrieves documents for the past seven days from a Firestore collection.
+
+    Args:
+        collection (str): The name of the Firestore collection.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary represents a document. Returns an empty list if no documents are found or an error occurs.
+    """
+
+    try:
+        today = datetime.date.today()
+        week_docs = []
+        for i in range(7):  # Iterate through the past 7 days
+            past_date = today - datetime.timedelta(days=i)
+            date_str = past_date.strftime("%m_%d_%Y")  # Format the date string
+            doc_ref = db.collection(collection).document(date_str)
+            doc = doc_ref.get()
+            if doc.exists:
+                week_docs.append(doc.to_dict())
+        return week_docs
+    except Exception as e:
+        print(f"Error retrieving past week's documents: {e}")
+        return []
+
 def search_firestore_by_field(collection_name, field_name, field_value):
     """Searches Firestore for documents matching a specific field value.
 
