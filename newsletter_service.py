@@ -26,7 +26,8 @@ get_topic = db_service.get_components_from_firestore('gcp_newsletter', 'settings
 # Create a matrix to iterate through every combination of persona and topics
 persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
 
-def get_newsletter_from_sources(source="https://snownews.appspot.com/feed"):
+def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
+                                num_days=0):
 
     # Parse the RSS feed
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -38,7 +39,8 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed"):
     for entry in feed.entries:
         # Check if the entry was published within the last week
         published_date = datetime.datetime(*entry.published_parsed[:6])
-        if published_date.date() == datetime.datetime.now().date():
+        time_period = datetime.date.today() - datetime.timedelta(days=num_days)
+        if published_date.date() == time_period:
             entries.append({
                 "title": entry.title,
                 "link": entry.link,
