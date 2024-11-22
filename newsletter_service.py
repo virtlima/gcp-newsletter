@@ -5,6 +5,7 @@ import ssl
 import gemini_wrapper, email_service, db_service
 import os
 from dotenv import load_dotenv
+from jinja2 import Environment, FileSystemLoader
 
 load_dotenv()
 """
@@ -20,11 +21,14 @@ Response:
   - newsletter (string): formatted newsletter with recommendation and all article summaries
 """
 # Getting all personas and topics stored in settings document in the newsletter_components collection
-get_persona = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['persona']
-get_topic = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['topic']
+get_persona = db_service.get_components_from_firestore('gcp_newsletter',
+                                                       'settings')['persona']
+get_topic = db_service.get_components_from_firestore('gcp_newsletter',
+                                                     'settings')['topic']
 
 # Create a matrix to iterate through every combination of persona and topics
 persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
+
 
 def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
                                 num_days=0):
@@ -56,96 +60,116 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     day_summaries = {
         'summaries': summaries,
         'timestamp': datetime.datetime.now()
-        }
+    }
 
     # Write summaries to firestore
-    wr_summaries = db_service.write_to_firestore('newsletter_summaries', day_summaries)
+    wr_summaries = db_service.write_to_firestore('newsletter_summaries',
+                                                 day_summaries)
 
     # Create a dictionary to store recommendations for all persona-topic combinations
     all_recommendations = {}
 
     # Grabbing Summaries from Firestore
-    get_sum = db_service.get_components_from_firestore('newsletter_summaries', wr_summaries)['summaries']
+    get_sum = db_service.get_components_from_firestore(
+        'newsletter_summaries', wr_summaries)['summaries']
 
     for persona, topic in persona_topic_matrix:
         print(f"Processing persona: {persona}, topic: {topic}")
-        rec_json = gemini_wrapper.generate_recommendation(
-            user_topic=topic, user_persona=persona, summaries=get_sum)
-        
+        rec_json = gemini_wrapper.generate_recommendation(user_topic=topic,
+                                                          user_persona=persona,
+                                                          summaries=get_sum)
+
         # Store recommendations under the corresponding persona-topic key
         all_recommendations[f"{persona}_{topic}"] = rec_json
 
     all_recommendations['timestamp'] = datetime.datetime.now()
 
     # Write all recommendations to a single document in Firestore
-    wr_rec = db_service.write_to_firestore('newsletter_recommendations', all_recommendations)
+    wr_rec = db_service.write_to_firestore('newsletter_recommendations',
+                                           all_recommendations)
+
 
 def generate_newsletter_from_db(time_period="day",
                                 user_topic="Any",
-                                user_persona="All"): 
+                                user_persona="All"):
 
     if time_period.lower() == "day":
         yesterday = datetime.date.today() - datetime.timedelta(days=1)
         doc = yesterday.strftime("%m_%d_%Y")
 
         # Grabbing Summaries from Firestore
-        get_sum = db_service.get_components_from_firestore('newsletter_summaries', doc)['summaries']
+        get_sum = db_service.get_components_from_firestore(
+            'newsletter_summaries', doc)['summaries']
 
         # Grabbing Recommendations from Firestore
-        get_rec = db_service.get_components_from_firestore('newsletter_recommendations', doc)
+        get_rec = db_service.get_components_from_firestore(
+            'newsletter_recommendations', doc)
 
-        # Format output
-        # Accessing summary_text (assuming it's a separate key in rec_json)
-        rec_string = f"Recs: {get_rec[f'{user_persona}_{user_topic}'].get('summary_text', '')}\n\n" 
-        
-        # Iterating over recommendations (now a list)
-        rec_string += "".join([
-            f"{i+1}. {rec.get('recommendation_title', '')}\n\
-                      Summary: {rec.get('recommendation_summary', '')}\n\
-                      Reason: {rec.get('recommendation_reason', '')}\n\
-                      Link: {rec.get('recommendation_link', '')}\n\n"
-            for i, rec in enumerate(get_rec[f"{user_persona}_{user_topic}"].get('recommendations', []))
-        ]) + "\n"
-        
-        summary_string = "Complete List of Articles:\n\n" + "".join([
-            f"{j+1}. {summary['title']}\n\
-                      Summary: {summary['summary']}\
-                      Link: {summary['link']}\n\n"
-            for j, summary in enumerate(get_sum)
-        ]) + "\n"
-        
-        newsletter = f"""Hi!\n\n""" + rec_string + summary_string
-        
+        # Format output through Jinja2 template
+        env = Environment(loader=FileSystemLoader('assets'))
+        template = env.get_template('email_template.html')
+
+        newsletter = template.render(recommended_articles=get_rec,
+                                     all_articles=get_sum,
+                                     year=datetime.datetime.now().year)
+
+        # # Accessing summary_text
+        # rec_string = f"Recs: {get_rec[f'{user_persona}_{user_topic}'].get('summary_text', '')}\n\n"
+
+        # # Iterating over recommendations (now a list)
+        # rec_string += "".join([
+        #     f"{i+1}. {rec.get('recommendation_title', '')}\n\
+        #               Summary: {rec.get('recommendation_summary', '')}\n\
+        #               Reason: {rec.get('recommendation_reason', '')}\n\
+        #               Link: {rec.get('recommendation_link', '')}\n\n"
+        #     for i, rec in enumerate(get_rec[f"{user_persona}_{user_topic}"].
+        #                             get('recommendations', []))
+        # ]) + "\n"
+
+        # summary_string = "Complete List of Articles:\n\n" + "".join([
+        #     f"{j+1}. {summary['title']}\n\
+        #               Summary: {summary['summary']}\
+        #               Link: {summary['link']}\n\n"
+        #     for j, summary in enumerate(get_sum)
+        # ]) + "\n"
+
+        # newsletter = f"""Hi!\n\n""" + rec_string + summary_string
+
         return newsletter
 
     elif time_period.lower() == "week":
 
         # Grabbing Summaries from the past week from Firestore
-        get_sum = db_service.get_documents_for_past_week('newsletter_summaries')
+        get_sum = db_service.get_documents_for_past_week(
+            'newsletter_summaries')
 
         # Grabbing Recommendations from the past week from Firestore
-        get_rec = db_service.get_documents_for_past_week('newsletter_recommendations')
+        get_rec = db_service.get_documents_for_past_week(
+            'newsletter_recommendations')
 
         # Initialize rec_string
         rec_string = ""
 
         for daily_rec in get_rec:  # Iterate through each day's recommendations
-            if f"{user_persona}_{user_topic}" in daily_rec: # Check if the key exists in current day's dict
+            if f"{user_persona}_{user_topic}" in daily_rec:  # Check if the key exists in current day's dict
                 rec_string = f"Recs: {daily_rec[f'{user_persona}_{user_topic}'].get('summary_text', '')}\n\n"
                 rec_string += "".join([
                     f"{i+1}. {rec.get('recommendation_title', '')}\n\
                           Summary: {rec.get('recommendation_summary', '')}\n\
                           Reason: {rec.get('recommendation_reason', '')}\n\
                           Link: {rec.get('recommendation_link', '')}\n\n"
-                    for i, rec in enumerate(daily_rec[f"{user_persona}_{user_topic}"].get('recommendations', []))
+                    for i, rec in enumerate(
+                        daily_rec[f"{user_persona}_{user_topic}"].get(
+                            'recommendations', []))
                 ]) + "\n"
             else:
-                 # Handle the case where the key isn't found for any day of the week
+                # Handle the case where the key isn't found for any day of the week
                 rec_string = f"No recommendations found for {user_persona} and {user_topic} this week.\n\n"
-        
+
         summary_string = "Complete List of Articles for This Week:\n\n"
-        for i, daily_summaries in enumerate(get_sum):  # Iterate through each day's summaries
-            summary_string += f"Day {i+1}:\n\n" # Add day identifier
+        for i, daily_summaries in enumerate(
+                get_sum):  # Iterate through each day's summaries
+            summary_string += f"Day {i+1}:\n\n"  # Add day identifier
 
             if daily_summaries and "summaries" in daily_summaries:
                 summary_string += "".join([
@@ -158,7 +182,7 @@ def generate_newsletter_from_db(time_period="day",
                 summary_string += "No articles found for this day.\n\n"
 
         newsletter = f"""Hi!\n\n""" + rec_string + summary_string
-        
+
         return newsletter
 
     else:
