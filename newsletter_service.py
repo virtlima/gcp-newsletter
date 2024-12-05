@@ -4,9 +4,7 @@ import datetime
 import ssl
 import gemini_wrapper, email_service, db_service
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
 """
 Function to generate a newsletter from RSS feed.
 

@@ -32,7 +32,7 @@ def main(page: ft.Page):
         newsletter_container = ft.Container(
             content=ft.Column(
                 [
-                    ft.Text(value=newsletter),
+                    ft.Text(value=newsletter,selectable=True),
                 ],
                 scroll=ft.ScrollMode.AUTO,  # Enable scrolling
                 expand=True,  # Allow the container to expand to fit content
