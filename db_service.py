@@ -8,7 +8,8 @@ cred = credentials.ApplicationDefault()
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-def write_to_firestore(collection, data):
+
+def write_to_firestore(collection, data, num_days=0):
     """Writes data to Firestore.
 
     Args:
@@ -20,9 +21,10 @@ def write_to_firestore(collection, data):
         str: The ID of the document written to Firestore.
     """
     try:
-        # Generate a key based on today's date
-        today = datetime.date.today().strftime("%m_%d_%Y")
-        doc_ref = db.collection(collection).document(f"{today}")
+        # Generate a key based on publicataion date
+        doc_date = datetime.date.today() - datetime.timedelta(days=num_days)
+        doc_date_str = doc_date.strftime("%m_%d_%Y")
+        doc_ref = db.collection(collection).document(f"{doc_date_str}")
         doc_ref.set(data)
         print(f"Data written to Firestore with ID: {doc_ref.id}")
     except Exception as e:

@@ -1,0 +1,5 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-f', 'nwsltr.dockerfile', '-t', 'us-central1-docker.pkg.dev/project-ana-851024/project-ana-docker-registry/nwslrt_web:latest', '.']
+images:
+- 'us-central1-docker.pkg.dev/project-ana-851024/project-ana-docker-registry/nwslrt_web:latest'

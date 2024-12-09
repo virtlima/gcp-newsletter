@@ -57,7 +57,7 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
         }
 
     # Write summaries to firestore
-    wr_summaries = db_service.write_to_firestore('newsletter_summaries', day_summaries)
+    wr_summaries = db_service.write_to_firestore('newsletter_summaries', day_summaries, num_days)
 
     # Create a dictionary to store recommendations for all persona-topic combinations
     all_recommendations = {}
@@ -76,7 +76,7 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
     all_recommendations['timestamp'] = datetime.datetime.now()
 
     # Write all recommendations to a single document in Firestore
-    wr_rec = db_service.write_to_firestore('newsletter_recommendations', all_recommendations)
+    wr_rec = db_service.write_to_firestore('newsletter_recommendations', all_recommendations, num_days)
 
 def generate_newsletter_from_db(time_period="day",
                                 user_topic="Any",
