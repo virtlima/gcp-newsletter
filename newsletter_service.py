@@ -21,10 +21,10 @@ Response:
   - newsletter (string): formatted newsletter with recommendation and all article summaries
 """
 # Getting all personas and topics stored in settings document in the newsletter_components collection
-get_persona = db_service.get_components_from_firestore('gcp_newsletter',
-                                                       'settings')['persona']
-get_topic = db_service.get_components_from_firestore('gcp_newsletter',
-                                                     'settings')['topic']
+get_persona = db_service.get_components_from_firestore(
+    'gcp_newsletter', 'settings')['settings']['persona']
+get_topic = db_service.get_components_from_firestore(
+    'gcp_newsletter', 'settings')['settings']['topic']
 
 # Create a matrix to iterate through every combination of persona and topics
 persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
@@ -95,93 +95,79 @@ def generate_newsletter_from_db(time_period="day",
 
     if time_period.lower() == "day":
         yesterday = datetime.date.today() - datetime.timedelta(days=1)
-        doc = yesterday.strftime("%m_%d_%Y")
+        doc = yesterday.strftime(f"%m_%d_%Y")
 
         # Grabbing Summaries from Firestore
         get_sum = db_service.get_components_from_firestore(
-            'newsletter_summaries', doc)['summaries']
+            'newsletter_summaries', doc)
 
         # Grabbing Recommendations from Firestore
         get_rec = db_service.get_components_from_firestore(
             'newsletter_recommendations', doc)
 
+        # Check if empty objects
+        if (get_sum == None or get_rec == None):
+            return "No articles found for that day"
+
+        # Get the list of dates and format them for Jinja Template
+        date_list = []
+        for date in get_rec.keys():
+            temp_date = datetime.datetime.strptime(date, "%m_%d_%Y")
+            formatted_date = temp_date.strftime("%B %d, %Y")
+            date_list.append(formatted_date)
+        print(date_list)
+
         # Format output through Jinja2 template
         env = Environment(loader=FileSystemLoader('assets'))
         template = env.get_template('email_template.html')
 
-        newsletter = template.render(recommended_articles=get_rec,
-                                     all_articles=get_sum,
-                                     year=datetime.datetime.now().year)
-
-        # # Accessing summary_text
-        # rec_string = f"Recs: {get_rec[f'{user_persona}_{user_topic}'].get('summary_text', '')}\n\n"
-
-        # # Iterating over recommendations (now a list)
-        # rec_string += "".join([
-        #     f"{i+1}. {rec.get('recommendation_title', '')}\n\
-        #               Summary: {rec.get('recommendation_summary', '')}\n\
-        #               Reason: {rec.get('recommendation_reason', '')}\n\
-        #               Link: {rec.get('recommendation_link', '')}\n\n"
-        #     for i, rec in enumerate(get_rec[f"{user_persona}_{user_topic}"].
-        #                             get('recommendations', []))
-        # ]) + "\n"
-
-        # summary_string = "Complete List of Articles:\n\n" + "".join([
-        #     f"{j+1}. {summary['title']}\n\
-        #               Summary: {summary['summary']}\
-        #               Link: {summary['link']}\n\n"
-        #     for j, summary in enumerate(get_sum)
-        # ]) + "\n"
-
-        # newsletter = f"""Hi!\n\n""" + rec_string + summary_string
+        # Fill in values to render newsletter. Gets passed to Jinja2 template
+        newsletter = template.render(
+            recommended_articles=get_rec,
+            all_articles=get_sum,
+            dates=enumerate(
+                get_rec.keys()
+            ),  # Enumerate so can loop through dictionary but also get index values for formatted dates.
+            formatted_dates=date_list,
+            user_persona_topic=f"{user_persona}_{user_topic}",
+            year=datetime.datetime.now().year)
 
         return newsletter
 
     elif time_period.lower() == "week":
+        # Define time range (7 for a week)
+        n = 7
 
         # Grabbing Summaries from the past week from Firestore
-        get_sum = db_service.get_documents_for_past_week(
-            'newsletter_summaries')
+        get_sum = db_service.get_documents_for_past_n_days(
+            'newsletter_summaries', n)
 
         # Grabbing Recommendations from the past week from Firestore
-        get_rec = db_service.get_documents_for_past_week(
-            'newsletter_recommendations')
+        get_rec = db_service.get_documents_for_past_n_days(
+            'newsletter_recommendations', n)
 
-        # Initialize rec_string
-        rec_string = ""
+        # Get the list of dates and format them for Jinja Template
+        date_list = []
+        for date in get_rec.keys():
+            temp_date = datetime.datetime.strptime(date, "%m_%d_%Y")
+            formatted_date = temp_date.strftime("%B %d, %Y")
+            date_list.append(formatted_date)
+        print(date_list)
 
-        for daily_rec in get_rec:  # Iterate through each day's recommendations
-            if f"{user_persona}_{user_topic}" in daily_rec:  # Check if the key exists in current day's dict
-                rec_string = f"Recs: {daily_rec[f'{user_persona}_{user_topic}'].get('summary_text', '')}\n\n"
-                rec_string += "".join([
-                    f"{i+1}. {rec.get('recommendation_title', '')}\n\
-                          Summary: {rec.get('recommendation_summary', '')}\n\
-                          Reason: {rec.get('recommendation_reason', '')}\n\
-                          Link: {rec.get('recommendation_link', '')}\n\n"
-                    for i, rec in enumerate(
-                        daily_rec[f"{user_persona}_{user_topic}"].get(
-                            'recommendations', []))
-                ]) + "\n"
-            else:
-                # Handle the case where the key isn't found for any day of the week
-                rec_string = f"No recommendations found for {user_persona} and {user_topic} this week.\n\n"
+        # Format output through Jinja2 template
+        env = Environment(loader=FileSystemLoader('assets'))
+        template = env.get_template('email_template.html')
 
-        summary_string = "Complete List of Articles for This Week:\n\n"
-        for i, daily_summaries in enumerate(
-                get_sum):  # Iterate through each day's summaries
-            summary_string += f"Day {i+1}:\n\n"  # Add day identifier
-
-            if daily_summaries and "summaries" in daily_summaries:
-                summary_string += "".join([
-                    f"{j+1}. {summary.get('title', '')}\n\
-                          Summary: {summary.get('summary', '')}\n\
-                          Link: {summary.get('link', '')}\n\n"
-                    for j, summary in enumerate(daily_summaries['summaries'])
-                ]) + "\n"
-            else:
-                summary_string += "No articles found for this day.\n\n"
-
-        newsletter = f"""Hi!\n\n""" + rec_string + summary_string
+        # Fill in values to render newsletter. Gets passed to Jinja2 template
+        newsletter = template.render(
+            recommended_articles=get_rec,
+            all_articles=get_sum,
+            dates=enumerate(
+                get_rec.keys()
+            ),  # Enumerate so can loop through dictionary but also get index values for formatted dates.
+            formatted_dates=date_list,
+            user_persona_topic=f"{user_persona}_{user_topic}",
+            year=datetime.datetime.now().year)
 
         return newsletter
 
