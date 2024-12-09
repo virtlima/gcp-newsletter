@@ -1,9 +1,12 @@
 import flet as ft
+import tempfile
 import os
 import newsletter_service, db_service
 
-USER_PERSONA = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['persona']
-USER_TOPIC = db_service.get_components_from_firestore('gcp_newsletter', 'settings')['topic']
+USER_PERSONA = db_service.get_components_from_firestore(
+    'gcp_newsletter', 'settings')['settings']['persona']
+USER_TOPIC = db_service.get_components_from_firestore(
+    'gcp_newsletter', 'settings')['settings']['topic']
 TIME_PERIOD = ["day", "week"]
 
 # Define the RSS feed URL - "https://blog.google/products/google-cloud/rss/"
@@ -29,18 +32,26 @@ def main(page: ft.Page):
             user_topic=topic.value,
         )
         # Return Newsletter Content to Display on Webpage.
-        newsletter_container = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text(value=newsletter),
-                ],
-                scroll=ft.ScrollMode.AUTO,  # Enable scrolling
-                expand=True,  # Allow the container to expand to fit content
-            ),
-            expand=True,  # Allow the container to take up available space
-        )
-        
-        page.add(newsletter_container)  # Add the container to the page
+        # newsletter_container = ft.Container(
+        #     content=ft.Column(
+        #         [
+        #             ft.Text(value=newsletter),
+        #         ],
+        #         scroll=ft.ScrollMode.AUTO,  # Enable scrolling
+        #         expand=True,  # Allow the container to expand to fit content
+        #     ),
+        #     expand=True,  # Allow the container to take up available space
+        # )
+        # Create html formatted email
+        with tempfile.NamedTemporaryFile(mode="w",
+                                         delete=False,
+                                         dir="/tmp",
+                                         suffix=".html") as f:
+            f.write(newsletter)
+            temp_file_path = f.name
+        file_url = f"file://{temp_file_path}"
+        page.launch_url(url=file_url)
+        # page.add(newsletter_container)  # Add the container to the page
         page.update()
 
     p = ft.Text()
