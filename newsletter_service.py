@@ -70,7 +70,7 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
 
     # Grabbing Summaries from Firestore
     get_sum = db_service.get_components_from_firestore(
-        'newsletter_summaries', wr_summaries)['summaries']
+        'newsletter_summaries', wr_summaries)
 
     for persona, topic in persona_topic_matrix:
         print(f"Processing persona: {persona}, topic: {topic}")

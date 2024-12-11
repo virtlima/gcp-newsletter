@@ -8,4 +8,4 @@ RUN pip install -r requirements.txt
 
 COPY *.py /app/
 
-CMD ["python", "newsletter_service.py"]
+ENTRYPOINT ["python", "newsletter_service.py"]
