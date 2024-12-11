@@ -79,26 +79,30 @@
     <div class="header">
       <h1>Google Cloud Newsletter</h1>
     </div>
+    {% for i, date in dates %}
+    <h2>{{ formatted_dates[i] }}</h2>
+    <div>
+      <h3>Recommended Articles</h3>
+      <p>{{ recommended_articles[date].summary_text }}</p>
+      {% for article in recommended_articles[date][user_persona_topic].recommendations %}
+      <div class="articles">
+        <div class="article">
+          <h4>{{ article.recommendation_title }}</h4>
+          <p>{{ article.recommendation_summary }}</p>
+          <p>{{ article.recommendation_reason }}</p>
+          <a href="{{ article.recommendation_link }}" class="button">Read More</a>
+          </div>
+          {% endfor %}
+          </div>
 
-    <h2>Recommended Articles</h2>
-    <p>{{ recommended_articles.summary_text }}</p>
-    <div class="articles">
-      {% for article in recommended_articles.recommendations %}
-      <div class="article">
-        <h3>{{ article.recommendation_title }}</h3>
-        <p>{{ article.recommendation_summary }}</p>
-        <p>{{ article.recommendation_reason }}</p>
-        <a href="{{ article.recommendation_link }}" class="button">Read More</a>
-      </div>
-      {% endfor %}
-    </div>
-
-    <h2>All Articles</h2>
-    <div class="articles">
-      {% for article in all_articles %}
-      <h3><a href="{{ article.link }}">{{ article.title }}</a></h3>
-      <p>{{ article.summary }}</p>
-      {% endfor %}
+      <h3>All Articles</h3>
+      <div class="articles">
+        {% for article in all_articles[date].summaries %}
+        <h4><a href="{{ article.link }}">{{ article.title }}</a></h4>
+        <p>{{ article.summary }}</p>
+        {% endfor %}
+        </div>
+        {% endfor %}
     </div>
 
     <div class="footer">

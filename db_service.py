@@ -33,20 +33,23 @@ def write_to_firestore(collection, data, num_days=0):
     return doc_ref.id
 
 def get_components_from_firestore(collection, document_id):
-    """Retrieves a document from a Firestore collection.
+    """Retrieves a single document from a Firestore collection.
 
     Args:
         collection (str): The name of the Firestore collection.
         document_id (str): The ID of the document to retrieve.
 
     Returns:
-        dict: The document data as a dictionary, or None if the document is not found.
+        dict: The document as a dictionary (including the document_id as key), or None if the document is not found.
+              Format example: {"document_id":document_contents}
     """
     try:
+        d_doc = {}
         doc_ref = db.collection(collection).document(document_id)
         doc = doc_ref.get()
         if doc.exists:
-            return doc.to_dict()
+            d_doc[document_id] = doc.to_dict()
+            return d_doc
         else:
             print(f"No newsletter found for {document_id}")
             return None
@@ -54,30 +57,33 @@ def get_components_from_firestore(collection, document_id):
         print(f"Error retrieving newsletter from Firestore: {e}")
         return None
 
-def get_documents_for_past_week(collection):
-    """Retrieves documents for the past seven days from a Firestore collection.
+
+def get_documents_for_past_n_days(collection, n=7):
+    """Retrieves documents for the past N days from a Firestore collection.
 
     Args:
         collection (str): The name of the Firestore collection.
+        n (int): Number of days to go back in time. Defaults to 7 (a week).
 
     Returns:
-        list: A list of dictionaries, where each dictionary represents a document. Returns an empty list if no documents are found or an error occurs.
+        n_docs (dict): A dictionary with document_id as key values and document (converted to dicts) as values.
+            Returns empty dict for exeptions.
     """
 
     try:
         today = datetime.date.today()
-        week_docs = []
-        for i in range(7):  # Iterate through the past 7 days
+        n_docs = {}
+        for i in range(n):  # Iterate through the past N days
             past_date = today - datetime.timedelta(days=i)
             date_str = past_date.strftime("%m_%d_%Y")  # Format the date string
             doc_ref = db.collection(collection).document(date_str)
             doc = doc_ref.get()
             if doc.exists:
-                week_docs.append(doc.to_dict())
-        return week_docs
+                n_docs[date_str] = doc.to_dict()
+        return n_docs
     except Exception as e:
         print(f"Error retrieving past week's documents: {e}")
-        return []
+        return {}
 
 def search_firestore_by_field(collection_name, field_name, field_value):
     """Searches Firestore for documents matching a specific field value.
