@@ -9,7 +9,7 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 
-def write_to_firestore(collection, data, num_days=0):
+def write_to_firestore(collection, data, num_days=1):
     """Writes data to Firestore.
 
     Args:

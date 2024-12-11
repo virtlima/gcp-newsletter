@@ -30,7 +30,7 @@ persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
 
 
 def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
-                                num_days=0):
+                                num_days=1):
 
     # Parse the RSS feed
     ssl._create_default_https_context = ssl._create_unverified_context
