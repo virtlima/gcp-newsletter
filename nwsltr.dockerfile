@@ -2,13 +2,9 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-RUN pip install firebase-admin
-RUN pip install google-cloud-aiplatform
-RUN pip install vertexai
-RUN pip install legacy-cgi
-RUN pip install feedparser
-RUN pip install python-dotenv
-RUN pip install jinja2
+COPY requirements.txt .
+
+RUN pip install -r requirements.txt
 
 COPY *.py /app/
 
