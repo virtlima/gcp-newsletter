@@ -7,7 +7,6 @@ import os
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
 
-load_dotenv()
 """
 Function to generate a newsletter from RSS feed.
 
@@ -31,7 +30,7 @@ persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
 
 
 def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
-                                num_days=0):
+                                num_days=1):
 
     # Parse the RSS feed
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -71,7 +70,7 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
 
     # Grabbing Summaries from Firestore
     get_sum = db_service.get_components_from_firestore(
-        'newsletter_summaries', wr_summaries)['summaries']
+        'newsletter_summaries', wr_summaries)
 
     for persona, topic in persona_topic_matrix:
         print(f"Processing persona: {persona}, topic: {topic}")
