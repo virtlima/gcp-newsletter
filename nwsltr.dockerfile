@@ -10,10 +10,6 @@ RUN pip install feedparser
 RUN pip install python-dotenv
 RUN pip install jinja2
 
-COPY gemini_wrapper.py .
-COPY gemini.py .
-COPY db_service.py .
-COPY newsletter_service.py .
-COPY email_service.py .
+COPY *.py /app/
 
 CMD ["python", "newsletter_service.py"]
