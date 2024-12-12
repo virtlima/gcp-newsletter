@@ -9,11 +9,8 @@ Safety is off by default.
 import vertexai, os
 from vertexai.preview.generative_models import GenerativeModel, Part, SafetySetting, Tool
 from vertexai.preview.generative_models import grounding
-from dotenv import load_dotenv
 
-load_dotenv()
-
-PROJECT_ID = os.environ.get("PROJECT_ID")
+PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT')
 
 vertexai.init(project=None, location="us-central1")
 
