@@ -1,9 +1,11 @@
-import flet as ft
+from flask import Flask, render_template_string, request, redirect, url_for, render_template
 import os, requests, datetime
 from google.cloud import storage
 import newsletter_service, db_service
 import google.auth.transport.requests
 from google.auth import impersonated_credentials
+
+app = Flask(__name__, template_folder="assets")
 
 USER_PERSONA = db_service.get_components_from_firestore(
     'gcp_newsletter', 'settings')['settings']['persona']
@@ -18,9 +20,7 @@ HTML_GCS_BUCKET = "rendered-newsletter-html-files"
 rss_url = "https://snownews.appspot.com/feed"
 
 sender_email = os.environ.get("SENDER_EMAIL")
-sender_password = os.environ.get(
-    "SENDER_PASSWORD"
-)  # Make gmail app password from here:https://support.google.com/accounts/answer/185833?visit_id=638655613103411169-2477840836&p=InvalidSecondFactor&rd=1
+sender_password = os.environ.get("SENDER_PASSWORD")
 
 # Define storage client for file uploads
 storage_client = storage.Client(project=PROJECT_ID)
@@ -36,8 +36,6 @@ def getCreds():
 
 # Function to get signed GCS urls
 def getSignedURL(filename, bucket, action):
-
-    # creds = service_account.Credentials.from_service_account_file('./credentials.json')
     creds = getCreds()
 
     signing_credentials = impersonated_credentials.Credentials(
@@ -57,22 +55,16 @@ def getSignedURL(filename, bucket, action):
 
 # Function to upload bytes object to GCS bucket
 def upload_file(uploaded_file_contents, uploaded_file_name, bucket_name, type):
-
     bucket = storage_client.bucket(bucket_name)
 
     url = getSignedURL(uploaded_file_name, bucket, "PUT")
-    # blob.upload_from_string(uploaded_file.read())
 
     print(f"Upload Signed URL: {url}")
 
-    # encoded_content = base64.b64encode(uploaded_file.read()).decode("utf-8")
-
-    # Again leverage signed URLs here to circumvence Cloud Run's 32 MB upload limit
     response = requests.put(url,
                             uploaded_file_contents,
                             headers={'Content-Type': type})
 
-    #TODO: review. Returns unsuccessful upon success.
     print(response.status_code)
     print(response.reason)
     output = f"Error in uploading content: {response.status_code} {response.reason} {response.text}"
@@ -81,37 +73,24 @@ def upload_file(uploaded_file_contents, uploaded_file_name, bucket_name, type):
     return output
 
 
-def main(page: ft.Page):
-    signed_url = "error"  # Replace with error page url
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        persona = request.form.get("persona", "no persona selected")
+        topic = request.form.get("topic", "no topic selected")
+        email = request.form.get("email", "no email specified")
+        time_period_value = request.form.get("time_period",
+                                             "no time period selected")
 
-    def open_newsletter_clicked(e, signed_url):
-        page.launch_url(signed_url)
-
-    def button_clicked(e):
-        loading = ft.Text(
-            f"Generating Newsletter for values: '{persona.value}', '{topic.value}', '{email.value}'"
-        )
-        page.add(loading)
         # Call newsletter_service.py to Generate Newsletter, pass values along
         newsletter_value = newsletter_service.generate_newsletter_from_db(
-            time_period=time_period.value,
-            user_persona=persona.value,
-            user_topic=topic.value,
+            time_period=time_period_value,
+            user_persona=persona,
+            user_topic=topic,
         )
-        # Return Newsletter Content to Display on Webpage.
-        # newsletter_container = ft.Container(
-        #     content=ft.Column(
-        #         [
-        #             ft.Text(value=newsletter),
-        #         ],
-        #         scroll=ft.ScrollMode.AUTO,  # Enable scrolling
-        #         expand=True,  # Allow the container to expand to fit content
-        #     ),
-        #     expand=True,  # Allow the container to take up available space
-        # )
 
         # Create html formatted email
-        newsletter_name = f"{persona.value}_{topic.value}_{datetime.date.today()}.html"
+        newsletter_name = f"{persona}_{topic}_{time_period_value}_{datetime.date.today()}.html"
         # Write newsletter to GCS
         result = upload_file(uploaded_file_contents=newsletter_value,
                              uploaded_file_name=newsletter_name,
@@ -119,39 +98,23 @@ def main(page: ft.Page):
                              type="text/html")
         print(f"File upload result: {result}")
         # Get signed url for said GCS file
-        signed_url = getSignedURL(
-            newsletter_name,
-            storage_client.bucket("rendered-newsletter-html-files"), "GET")
+        signed_url = getSignedURL(newsletter_name,
+                                  storage_client.bucket(HTML_GCS_BUCKET),
+                                  "GET")
         print(signed_url)
-        # Display link to open GCS file
-        page.add(
-            ft.TextButton(
-                f"Click here to open generated newsletter: {newsletter_name}",
-                on_click=lambda e: open_newsletter_clicked(e, signed_url)))
-        # page.add(ft.Text(signed_url, selectable=True))
-        # page.add(newsletter_container)  # Add the container to the page
+
+        return render_template("index.html",
+                               user_persona=USER_PERSONA,
+                               user_topic=USER_TOPIC,
+                               time_period=TIME_PERIOD,
+                               signed_url=signed_url,
+                               newsletter_name=newsletter_name)
+
+    return render_template("index.html",
+                           user_persona=USER_PERSONA,
+                           user_topic=USER_TOPIC,
+                           time_period=TIME_PERIOD)
 
 
-    p = ft.Text()
-    b = ft.ElevatedButton(text="Generate", on_click=button_clicked)
-    persona = ft.Dropdown(
-        width=500,
-        label="Persona",
-        options=[ft.dropdown.Option(persona) for persona in USER_PERSONA],
-    )
-    topic = ft.Dropdown(
-        width=500,
-        label="Topic",
-        options=[ft.dropdown.Option(topic) for topic in USER_TOPIC],
-    )
-    time_period = ft.Dropdown(
-        width=500,
-        label="Time Period",
-        options=[ft.dropdown.Option(period) for period in TIME_PERIOD],
-    )
-    email = ft.TextField(width=500,
-                         label="E-Mail (if you want us to send via email)")
-    page.add(persona, topic, email, time_period, b, p)
-
-
-ft.app(main)
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
