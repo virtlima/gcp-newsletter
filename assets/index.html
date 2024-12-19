@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Automated Newsletter Assistant (ANA)</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 p-8">
+  <div class="max-w-2xl mx-auto bg-white p-6 rounded-lg shadow-md">
+    <div class="bg-red-100 text-black p-2 rounded mb-4">
+      Disclaimer: email service does not work yet
+    </div>
+    <h1 class="text-2xl font-bold mb-4">Automated Newsletter Assistant</h1>
+    <form method="POST">
+      <div class="mb-4">
+        <label for="persona" class="block text-gray-700 text-sm font-bold mb-2">Persona:</label>
+        <select name="persona" id="persona"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+          {% for p in user_persona %}
+          <option value="{{ p }}">{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-4">
+        <label for="topic" class="block text-gray-700 text-sm font-bold mb-2">Topic:</label>
+        <select name="topic" id="topic"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+          {% for t in user_topic %}
+          <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-4">
+        <label for="email" class="block text-gray-700 text-sm font-bold mb-2">E-Mail (if you want us to send via
+          email):</label>
+        <input type="email" name="email" id="email"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+      </div>
+      <div class="mb-4">
+        <label for="time_period" class="block text-gray-700 text-sm font-bold mb-2">Time Period:</label>
+        <select name="time_period" id="time_period"
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+          {% for tp in time_period %}
+          <option value="{{ tp }}">{{ tp }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit"
+        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+        Generate
+      </button>
+    </form>
+    {% if newsletter_name %}
+    <div class="mt-6">
+      <h2 class="text-xl font-bold mb-2">Generated Newsletter</h2>
+      <p>{{ loading_message }}</p>
+      <a href="{{ signed_url }}" target="_blank"
+        class="mt-4 inline-block bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        Click here to open generated newsletter: {{ newsletter_name }}
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  <footer class="mt-8 text-center">
+    For feedback please reach out to <a href="mailto:gcp-ana@google.com" class="text-blue-500">gcp-ana@google.com</a>
+  </footer>
+</body>
+
+</html>
