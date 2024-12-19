@@ -1,6 +1,5 @@
 FROM python:3.13-slim
 
-ENV FLET_FORCE_WEB_SERVER=true
 WORKDIR /app
 
 COPY requirements.txt .
