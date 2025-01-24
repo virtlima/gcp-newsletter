@@ -53,38 +53,41 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
 
     print(len(entries))
 
-    # Generate summaries
-    summaries = gemini_wrapper.generate_summaries(entries)
+    if entries == 0:
+        return "No articles found for that day"
+    else:
+        # Generate summaries
+        summaries = gemini_wrapper.generate_summaries(entries)
+        
+        day_summaries = {
+            'summaries': summaries,
+            'timestamp': datetime.datetime.now()
+        }
 
-    day_summaries = {
-        'summaries': summaries,
-        'timestamp': datetime.datetime.now()
-    }
-
-    # Write summaries to firestore
-    wr_summaries = db_service.write_to_firestore('newsletter_summaries',
-                                                 day_summaries)
-
-    # Create a dictionary to store recommendations for all persona-topic combinations
-    all_recommendations = {}
-
-    # Grabbing Summaries from Firestore
-    get_sum = db_service.get_components_from_firestore(
-        'newsletter_summaries', wr_summaries)
-
-    for persona, topic in persona_topic_matrix:
-        print(f"Processing persona: {persona}, topic: {topic}")
-        rec_json = gemini_wrapper.generate_recommendation(user_topic=topic,
-                                                          user_persona=persona,
-                                                          summaries=get_sum)
-
-        # Store recommendations under the corresponding persona-topic key
-        all_recommendations[f"{persona}_{topic}"] = rec_json
-
-    all_recommendations['timestamp'] = datetime.datetime.now()
-
-    # Write all recommendations to a single document in Firestore
-    wr_rec = db_service.write_to_firestore('newsletter_recommendations',
+        # Write summaries to firestore
+        wr_summaries = db_service.write_to_firestore('newsletter_summaries',
+                                                     day_summaries)
+    
+        # Create a dictionary to store recommendations for all persona-topic combinations
+        all_recommendations = {}
+    
+        # Grabbing Summaries from Firestore
+        get_sum = db_service.get_components_from_firestore(
+            'newsletter_summaries', wr_summaries)
+    
+        for persona, topic in persona_topic_matrix:
+            print(f"Processing persona: {persona}, topic: {topic}")
+            rec_json = gemini_wrapper.generate_recommendation(user_topic=topic,
+                                                              user_persona=persona,
+                                                              summaries=get_sum)
+    
+            # Store recommendations under the corresponding persona-topic key
+            all_recommendations[f"{persona}_{topic}"] = rec_json
+    
+        all_recommendations['timestamp'] = datetime.datetime.now()
+    
+        # Write all recommendations to a single document in Firestore
+        wr_rec = db_service.write_to_firestore('newsletter_recommendations',
                                            all_recommendations)
 
 

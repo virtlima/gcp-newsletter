@@ -1,6 +1,8 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1 import FieldFilter
 import datetime
+import sys
 
 
 # Initialize Firestore
@@ -102,3 +104,19 @@ def search_firestore_by_field(collection_name, field_name, field_value):
     except Exception as e:
         print(f"Error searching Firestore: {e}")
         return []
+
+# Function to delete documents older than 30
+def delete_documents_older_than_30_days(collection_name):
+    try:
+        thirty_days_ago = datetime.datetime.now() - datetime.timedelta(days=30)
+        query = db.collection(collection_name).where(filter=FieldFilter('timestamp', '<', thirty_days_ago))
+        docs = query.stream()
+        for doc in docs:
+            doc.reference.delete()
+        print(f"Documents older than 30 days deleted from {collection_name}")
+    except Exception as e:
+        print(f"Error deleting documents: {e}")
+
+if __name__ == "__main__":
+    delete_documents_older_than_30_days('newsletter_summaries')
+    delete_documents_older_than_30_days('newsletter_recommendations')
