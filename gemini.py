@@ -71,7 +71,7 @@ def generate(prompt, temp = 0.1, safety_off = True, gwgs = False, json_on = Fals
     tools = []
 
   model = GenerativeModel(
-      "gemini-1.5-flash-002",
+      "gemini-2.0-flash-001",
       tools=tools,
   )
   response = model.generate_content(
