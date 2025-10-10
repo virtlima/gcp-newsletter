@@ -1,10 +1,8 @@
 import feedparser
-import json
 import datetime
 import ssl
 import gemini_wrapper, email_service, db_service
 import os
-from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
 
 """
@@ -53,129 +51,85 @@ def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
 
     print(len(entries))
 
-    if entries == 0:
+    if not entries:
         return "No articles found for that day"
-    else:
-        # Generate summaries
-        summaries = gemini_wrapper.generate_summaries(entries)
-        
-        day_summaries = {
-            'summaries': summaries,
-            'timestamp': datetime.datetime.now()
-        }
+    
+    # Generate summaries
+    summaries_list = gemini_wrapper.generate_summaries(entries)
+    
+    day_summaries = {
+        'summaries': summaries_list,
+        'timestamp': datetime.datetime.now()
+    }
 
-        # Write summaries to firestore
-        wr_summaries = db_service.write_to_firestore('newsletter_summaries',
-                                                     day_summaries)
-    
-        # Create a dictionary to store recommendations for all persona-topic combinations
-        all_recommendations = {}
-    
-        # Grabbing Summaries from Firestore
-        get_sum = db_service.get_components_from_firestore(
-            'newsletter_summaries', wr_summaries)
-    
-        for persona, topic in persona_topic_matrix:
-            print(f"Processing persona: {persona}, topic: {topic}")
-            rec_json = gemini_wrapper.generate_recommendation(user_topic=topic,
-                                                              user_persona=persona,
-                                                              summaries=get_sum)
-    
-            # Store recommendations under the corresponding persona-topic key
-            all_recommendations[f"{persona}_{topic}"] = rec_json
-    
-        all_recommendations['timestamp'] = datetime.datetime.now()
-    
-        # Write all recommendations to a single document in Firestore
-        wr_rec = db_service.write_to_firestore('newsletter_recommendations',
-                                           all_recommendations)
+    # Write summaries to firestore
+    db_service.write_to_firestore('newsletter_summaries',
+                                                 day_summaries, num_days=num_days)
 
+    # Create a dictionary to store recommendations for all persona-topic combinations
+    all_recommendations = {}
+
+    for persona, topic in persona_topic_matrix:
+        print(f"Processing persona: {persona}, topic: {topic}")
+        rec_json = gemini_wrapper.generate_recommendation(user_topic=topic,
+                                                          user_persona=persona,
+                                                          summaries=summaries_list)
+
+        # Store recommendations under the corresponding persona-topic key
+        all_recommendations[f"{persona}_{topic}"] = rec_json
+
+    all_recommendations['timestamp'] = datetime.datetime.now()
+
+    # Write all recommendations to a single document in Firestore
+    db_service.write_to_firestore('newsletter_recommendations',
+                                       all_recommendations, num_days=num_days)
+
+def _render_newsletter_html(summaries, recommendations, user_persona, user_topic):
+    """Helper function to render the newsletter HTML."""
+    if not summaries or not recommendations:
+        return "No articles found for the selected period."
+
+    # Get the list of dates and format them for Jinja Template
+    date_list = []
+    # Sort keys to ensure chronological order
+    sorted_dates = sorted(recommendations.keys())
+    for date in sorted_dates:
+        try:
+            temp_date = datetime.datetime.strptime(date, "%m_%d_%Y")
+            formatted_date = temp_date.strftime("%B %d, %Y")
+            date_list.append(formatted_date)
+        except ValueError:
+            continue # Skip keys that are not dates, like 'timestamp'
+
+    # Format output through Jinja2 template
+    env = Environment(loader=FileSystemLoader('assets'))
+    template = env.get_template('email_template.html')
+
+    # Fill in values to render newsletter. Gets passed to Jinja2 template
+    return template.render(
+        recommended_articles=recommendations,
+        all_articles=summaries,
+        dates=enumerate(sorted_dates),
+        formatted_dates=date_list,
+        user_persona_topic=f"{user_persona}_{user_topic}",
+        year=datetime.datetime.now().year)
 
 def generate_newsletter_from_db(time_period="day",
                                 user_topic="Any",
                                 user_persona="All"):
 
     if time_period.lower() == "day":
-        yesterday = datetime.date.today() - datetime.timedelta(days=1)
-        doc = yesterday.strftime(f"%m_%d_%Y")
-
-        # Grabbing Summaries from Firestore
-        get_sum = db_service.get_components_from_firestore(
-            'newsletter_summaries', doc)
-
-        # Grabbing Recommendations from Firestore
-        get_rec = db_service.get_components_from_firestore(
-            'newsletter_recommendations', doc)
-
-        # Check if empty objects
-        if (get_sum == None or get_rec == None):
-            return "No articles found for that day"
-
-        # Get the list of dates and format them for Jinja Template
-        date_list = []
-        for date in get_rec.keys():
-            temp_date = datetime.datetime.strptime(date, "%m_%d_%Y")
-            formatted_date = temp_date.strftime("%B %d, %Y")
-            date_list.append(formatted_date)
-        print(date_list)
-
-        # Format output through Jinja2 template
-        env = Environment(loader=FileSystemLoader('assets'))
-        template = env.get_template('email_template.html')
-
-        # Fill in values to render newsletter. Gets passed to Jinja2 template
-        newsletter = template.render(
-            recommended_articles=get_rec,
-            all_articles=get_sum,
-            dates=enumerate(
-                get_rec.keys()
-            ),  # Enumerate so can loop through dictionary but also get index values for formatted dates.
-            formatted_dates=date_list,
-            user_persona_topic=f"{user_persona}_{user_topic}",
-            year=datetime.datetime.now().year)
-
-        return newsletter
-
+        n = 1
     elif time_period.lower() == "week":
-        # Define time range (7 for a week)
         n = 7
-
-        # Grabbing Summaries from the past week from Firestore
-        get_sum = db_service.get_documents_for_past_n_days(
-            'newsletter_summaries', n)
-
-        # Grabbing Recommendations from the past week from Firestore
-        get_rec = db_service.get_documents_for_past_n_days(
-            'newsletter_recommendations', n)
-
-        # Get the list of dates and format them for Jinja Template
-        date_list = []
-        for date in get_rec.keys():
-            temp_date = datetime.datetime.strptime(date, "%m_%d_%Y")
-            formatted_date = temp_date.strftime("%B %d, %Y")
-            date_list.append(formatted_date)
-        print(date_list)
-
-        # Format output through Jinja2 template
-        env = Environment(loader=FileSystemLoader('assets'))
-        template = env.get_template('email_template.html')
-
-        # Fill in values to render newsletter. Gets passed to Jinja2 template
-        newsletter = template.render(
-            recommended_articles=get_rec,
-            all_articles=get_sum,
-            dates=enumerate(
-                get_rec.keys()
-            ),  # Enumerate so can loop through dictionary but also get index values for formatted dates.
-            formatted_dates=date_list,
-            user_persona_topic=f"{user_persona}_{user_topic}",
-            year=datetime.datetime.now().year)
-
-        return newsletter
-
     else:
         print("Please define time period")
+        return "Invalid time period specified. Please use 'day' or 'week'."
 
+    summaries = db_service.get_documents_for_past_n_days('newsletter_summaries', n)
+    recommendations = db_service.get_documents_for_past_n_days('newsletter_recommendations', n)
+
+    return _render_newsletter_html(summaries, recommendations, user_persona, user_topic)
 
 def send_email_test():
     _, summaries, rec_json = get_newsletter_from_sources()

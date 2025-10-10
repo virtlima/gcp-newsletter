@@ -3,15 +3,12 @@ Makes direct calls to the Gemini API.
 
 Used for summarization, recommendation purposes.
 """
-import vertexai, os, json, gemini
-from vertexai.generative_models import GenerativeModel
-
-
+import json, gemini
 
 # IN: RSS feed from last week
 # OUT: List of Summarized articles with title,
 #      link and summary
-def generate_summaries(last_entries):
+def generate_summaries(entries):
   """
   Generate a short summary for each articles.
   Must have access to article content otherwise the
@@ -19,39 +16,44 @@ def generate_summaries(last_entries):
   with Google Search here.
 
   Arguments:
-    - last_week_entries (list): list of title, link, and
+    - entries (list): list of title, link, and
       metadata provided by RSS feed
 
   Returns:
     - summaries (list): title, link, and generated summary
   """
 
-  # Create a list to store the summaries
-  summaries = []
+  # Construct the prompt for the generative model to process all entries at once
+  articles_to_summarize = "\n".join(
+      [f"- Title: {entry['title']}, Link: {entry['link']}" for entry in entries]
+  )
 
-  # Iterate over the last week's entries and generate summaries
-  for entry in last_entries:
-      # Construct the prompt for the generative model
-      summary_prompt = f"""
-      Provide a very short summary, no more than three sentences, for this article:
-      Title: {entry['title']}
-      Link: {entry['link']}
-      Metadata: {entry['metadata']}
-      To generate the summary you must only include contents found at the corresponding link provided.
-      """
+  summary_prompt = f"""
+  For each of the following articles, provide a very short summary of no more than three sentences.
+  You must only include contents found at the corresponding link provided for each article.
+  Return a JSON object with a key "summaries" which is a list of objects.
+  Each object in the list should contain "title", "link", and "summary".
+  The order of the summaries in the list must match the order of the articles provided.
 
-      # Generate the summary using the generative model
-      summary_response = gemini.generate(summary_prompt,
-                                         gwgs = True)
+  Articles:
+  {articles_to_summarize}
+  """
 
-      # Append the summary to the list
-      summaries.append({
-          "title": entry['title'],
-          "link": entry['link'],
-          "summary": summary_response.text,
-      })
+  # Generate the summary using the generative model
+  summary_response = gemini.generate(summary_prompt, json_on=True)
 
-  return summaries
+  try:
+    # The model should return a JSON object with a "summaries" key
+    response_data = json.loads(summary_response.text)
+    return response_data.get("summaries", [])
+  except (json.JSONDecodeError, AttributeError) as e:
+    print(f"Error decoding summaries JSON from model: {e}")
+    # Fallback to creating summaries without the generated text
+    return [{
+        "title": entry['title'],
+        "link": entry['link'],
+        "summary": "Summary could not be generated."
+    } for entry in entries]
 
 def generate_recommendation(user_topic, user_persona, summaries):
   """
@@ -79,20 +81,19 @@ def generate_recommendation(user_topic, user_persona, summaries):
   """
 
   # Make the call to the model. Enforce JSON output.
-  rec_response = gemini.generate(prompt = rec_prompt,
-                                 gwgs = False,
-                                 json_on = True)
+  rec_response = gemini.generate(prompt=rec_prompt,
+                                 json_on=True)
 
   # Convert output of rec response
-  # NOTE: should create checks in case LLM doesn't respond in JSON format
-  is_json = True
   try:
     rec_json = json.loads(rec_response.text)
+    return rec_json
   except json.JSONDecodeError as e:
     print(f"Invalid JSON string: {e}")
-    is_json = False
-
-  if is_json:
-    return rec_json
-  else:
-    return "Invalid JSON"
+    # Return a structured error object instead of a plain string
+    return {
+        "user_topic": user_topic,
+        "user_persona": user_persona,
+        "summary_text": "Could not generate recommendations due to an error.",
+        "recommendations": []
+    }

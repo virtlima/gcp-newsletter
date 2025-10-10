@@ -6,80 +6,25 @@ because it is expensive.
 Safety is off by default.
 """
 
-import vertexai, os
-from vertexai.preview.generative_models import GenerativeModel, Part, SafetySetting, Tool
-from vertexai.preview.generative_models import grounding
+import os
+from google import genai
+from google.genai import types
 
 PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT')
 
-vertexai.init(project=None, location="us-central1")
+genai_client = genai.Client(
+    vertexai=True, project=PROJECT_ID, location='us-central1'
+)
 
-def generate(prompt, temp = 0.1, safety_off = True, gwgs = False, json_on = False):
-  generation_config = {
-    "max_output_tokens": 8192,
-    "temperature": temp,
-    "response_mime_type": "application/json" if json_on else "text/plain",
-    # NOTE: add 'responseSchema' to define json response format
-  }
-
-  if safety_off:
-    safety_settings = [
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold=SafetySetting.HarmBlockThreshold.OFF
-        ),
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold=SafetySetting.HarmBlockThreshold.OFF
-        ),
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold=SafetySetting.HarmBlockThreshold.OFF
-        ),
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold=SafetySetting.HarmBlockThreshold.OFF
-        ),
-    ]
-  else:
-     safety_settings = [
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold=SafetySetting.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
-        ),
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold=SafetySetting.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
-        ),
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold=SafetySetting.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
-        ),
-        SafetySetting(
-            category=SafetySetting.HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold=SafetySetting.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE
-        ),
-     ]
-
-  if gwgs:
-    tools = [
-        Tool.from_google_search_retrieval(
-            google_search_retrieval=grounding.GoogleSearchRetrieval()
-        ),
-    ]
-  else:
-    tools = []
-
-  model = GenerativeModel(
-      "gemini-2.0-flash-001",
-      tools=tools,
-  )
-  response = model.generate_content(
-      prompt,
-      generation_config=generation_config,
-      safety_settings=safety_settings,
-      stream=False,
-
+def generate(prompt, temp = 0.1, json_on = False):
+  response = genai_client.models.generate_content(
+      model='gemini-2.5-flash',
+      contents=prompt,
+      config=types.GenerateContentConfig(
+        max_output_tokens=8192,
+        temperature=temp,
+        response_mime_type="application/json" if json_on else "text/plain",
+      )
   )
 
   return response
