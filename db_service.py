@@ -2,12 +2,16 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1 import FieldFilter
 import datetime
-import sys
+import logging
 
 
-# Initialize Firestore
-cred = credentials.ApplicationDefault()
-firebase_admin.initialize_app(cred)
+logger = logging.getLogger(__name__)
+
+# Idempotent initialization of Firestore
+if not firebase_admin._apps:
+    logger.info("Initializing Firebase App...")
+    cred = credentials.ApplicationDefault()
+    firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 
@@ -22,17 +26,18 @@ def write_to_firestore(collection, data, num_days=1):
     Returns:
         str: The ID of the document written to Firestore.
     """
+    doc_ref = None
     try:
         # Generate a key based on publicataion date
         doc_date = datetime.date.today() - datetime.timedelta(days=num_days)
         doc_date_str = doc_date.strftime("%m_%d_%Y")
         doc_ref = db.collection(collection).document(f"{doc_date_str}")
         doc_ref.set(data)
-        print(f"Data written to Firestore with ID: {doc_ref.id}")
+        logger.info(f"Data written to Firestore collection '{collection}' with ID: {doc_ref.id}")
+        return doc_ref.id
     except Exception as e:
-        print(f"Error writing data to Firestore: {e}")
-
-    return doc_ref.id
+        logger.error(f"Error writing to Firestore collection '{collection}': {e}", exc_info=True)
+        return None
 
 def get_components_from_firestore(collection, document_id):
     """Retrieves a single document from a Firestore collection.
@@ -42,21 +47,18 @@ def get_components_from_firestore(collection, document_id):
         document_id (str): The ID of the document to retrieve.
 
     Returns:
-        dict: The document as a dictionary (including the document_id as key), or None if the document is not found.
-              Format example: {"document_id":document_contents}
+        dict: The document's data as a dictionary, or None if not found or an error occurs.
     """
     try:
-        d_doc = {}
         doc_ref = db.collection(collection).document(document_id)
         doc = doc_ref.get()
         if doc.exists:
-            d_doc[document_id] = doc.to_dict()
-            return d_doc
+            return doc.to_dict()
         else:
-            print(f"No newsletter found for {document_id}")
+            logger.warning(f"Document '{document_id}' not found in collection '{collection}'.")
             return None
     except Exception as e:
-        print(f"Error retrieving newsletter from Firestore: {e}")
+        logger.error(f"Error retrieving document '{document_id}' from Firestore: {e}", exc_info=True)
         return None
 
 
@@ -68,7 +70,7 @@ def get_documents_for_past_n_days(collection, n=7):
         n (int): Number of days to go back in time. Defaults to 7 (a week).
 
     Returns:
-        n_docs (dict): A dictionary with document_id as key values and document (converted to dicts) as values.
+        dict: A dictionary with document_id as key and document data as value.
             Returns empty dict for exeptions.
     """
 
@@ -90,7 +92,7 @@ def get_documents_for_past_n_days(collection, n=7):
                 n_docs[date_str] = doc.to_dict()
         return n_docs
     except Exception as e:
-        print(f"Error retrieving past week's documents: {e}")
+        logger.error(f"Error retrieving past {n} days' documents from '{collection}': {e}", exc_info=True)
         return {}
 
 def search_firestore_by_field(collection_name, field_name, field_value):
@@ -102,26 +104,27 @@ def search_firestore_by_field(collection_name, field_name, field_value):
         field_value (str): The value to match in the field.
 
     Returns:
-        list: A list of dictionaries representing matching documents, or an empty list if none are found.
+        list: A list of dictionaries for matching documents. Returns None on error.
     """
     try:
-        docs = db.collection(collection_name).where(field_name, '==', field_value).stream()
+        query = db.collection(collection_name).where(filter=FieldFilter(field_name, '==', field_value))
+        docs = query.stream()
         return [doc.to_dict() for doc in docs]
     except Exception as e:
-        print(f"Error searching Firestore: {e}")
-        return []
+        logger.error(f"Error searching Firestore collection '{collection_name}': {e}", exc_info=True)
+        return None
 
 # Function to delete documents older than 30
 def delete_documents_older_than_30_days(collection_name):
     try:
-        thirty_days_ago = datetime.datetime.now() - datetime.timedelta(days=30)
+        thirty_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
         query = db.collection(collection_name).where(filter=FieldFilter('timestamp', '<', thirty_days_ago))
         docs = query.stream()
         for doc in docs:
             doc.reference.delete()
-        print(f"Documents older than 30 days deleted from {collection_name}")
+        logger.info(f"Successfully ran cleanup for documents older than 30 days in '{collection_name}'.")
     except Exception as e:
-        print(f"Error deleting documents: {e}")
+        logger.error(f"Error deleting old documents from '{collection_name}': {e}", exc_info=True)
 
 if __name__ == "__main__":
     delete_documents_older_than_30_days('newsletter_summaries')

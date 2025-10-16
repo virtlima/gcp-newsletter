@@ -9,6 +9,15 @@ from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
 
+# --- Constants ---
+RSS_FEED_URL_DEFAULT = "https://snownews.appspot.com/feed"
+COLLECTION_SUMMARIES = 'newsletter_summaries'
+COLLECTION_RECOMMENDATIONS = 'newsletter_recommendations'
+COLLECTION_SETTINGS = 'gcp_newsletter'
+DOCUMENT_SETTINGS = 'settings'
+TIME_PERIOD_DAY = "day"
+TIME_PERIOD_WEEK = "week"
+
 """
 Function to generate a newsletter from RSS feed.
 
@@ -23,7 +32,7 @@ Response:
 """
 
 
-def process_daily_articles(source="https://snownews.appspot.com/feed",
+def process_daily_articles(source=RSS_FEED_URL_DEFAULT,
                            num_days=1):
     """
     Fetches articles from an RSS feed, generates summaries and recommendations,
@@ -33,8 +42,12 @@ def process_daily_articles(source="https://snownews.appspot.com/feed",
     # This is a security risk and should be avoided in production.
     # It's better to ensure the server environment has the correct CA certificates.
     logger.warning("Disabling SSL certificate verification for feedparser.")
-    ssl._create_default_https_context = ssl._create_unverified_context
-    feed = feedparser.parse(source)
+    try:
+        ssl._create_default_https_context = ssl._create_unverified_context
+        feed = feedparser.parse(source)
+    except Exception as e:
+        logger.error(f"Error parsing RSS feed from {source}: {e}", exc_info=True)
+        return
 
     entries = []
     target_date = datetime.date.today() - datetime.timedelta(days=num_days)
@@ -66,16 +79,16 @@ def process_daily_articles(source="https://snownews.appspot.com/feed",
             'summaries': summaries_list,
             'timestamp': datetime.datetime.now(datetime.timezone.utc)
         }
-        db_service.write_to_firestore('newsletter_summaries', day_summaries, num_days=num_days)
+        db_service.write_to_firestore(COLLECTION_SUMMARIES, day_summaries, num_days=num_days)
         
         # 2. Generate and store recommendations for all personas and topics
-        settings = db_service.get_components_from_firestore('gcp_newsletter', 'settings')
+        settings = db_service.get_components_from_firestore(COLLECTION_SETTINGS, DOCUMENT_SETTINGS)
         if not settings:
             logger.error("Failed to retrieve settings from Firestore. Cannot generate recommendations.")
             return
         
-        get_persona = settings['settings']['persona']
-        get_topic = settings['settings']['topic']
+        get_persona = settings.get('persona', [])
+        get_topic = settings.get('topic', [])
         persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
         
         all_recommendations = {}
@@ -85,7 +98,7 @@ def process_daily_articles(source="https://snownews.appspot.com/feed",
             all_recommendations[f"{persona}_{topic}"] = rec_json
             
         all_recommendations['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-        db_service.write_to_firestore('newsletter_recommendations', all_recommendations, num_days=num_days)
+        db_service.write_to_firestore(COLLECTION_RECOMMENDATIONS, all_recommendations, num_days=num_days)
         
         logger.info("Successfully processed and stored summaries and recommendations.")
     except Exception as e:
@@ -116,7 +129,7 @@ def _render_newsletter_html(summaries, recommendations, user_persona, user_topic
 
     # Format output through Jinja2 template
     try:
-        env = Environment(loader=FileSystemLoader('assets'))
+        env = Environment(loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), 'assets')))
         template = env.get_template('email_template.html')
 
         # Fill in values to render newsletter. Gets passed to Jinja2 template
@@ -139,17 +152,17 @@ def generate_newsletter_from_db(time_period="day",
     from Firestore for a given time period, persona, and topic.
     """
     logger.info(f"Generating newsletter from DB for period: '{time_period}', persona: '{user_persona}', topic: '{user_topic}'")
-    if time_period.lower() == "day":
+    if time_period.lower() == TIME_PERIOD_DAY:
         n = 1
-    elif time_period.lower() == "week":
+    elif time_period.lower() == TIME_PERIOD_WEEK:
         n = 7
     else:
         logger.error(f"Invalid time period specified: '{time_period}'")
         return "Invalid time period specified. Please use 'day' or 'week'."
 
     try:
-        summaries = db_service.get_documents_for_past_n_days('newsletter_summaries', n)
-        recommendations = db_service.get_documents_for_past_n_days('newsletter_recommendations', n)
+        summaries = db_service.get_documents_for_past_n_days(COLLECTION_SUMMARIES, n)
+        recommendations = db_service.get_documents_for_past_n_days(COLLECTION_RECOMMENDATIONS, n)
         
         if not summaries or not recommendations:
             logger.warning(f"No data found in Firestore for the past {n} days.")

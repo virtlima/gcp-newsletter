@@ -17,12 +17,6 @@ app = Flask(__name__, template_folder="assets")
 client = google.cloud.logging.Client()
 client.setup_logging()
 
-USER_PERSONA = db_service.get_components_from_firestore(
-    'gcp_newsletter', 'settings')['settings']['persona']
-USER_TOPIC = db_service.get_components_from_firestore(
-    'gcp_newsletter', 'settings')['settings']['topic']
-TIME_PERIOD = ["day", "week"]
-
 # --- Configuration from Environment ---
 # Get the Project ID from the Cloud Run environment
 credentials, project_id = google.auth.default()
@@ -34,6 +28,7 @@ SIGNING_SERVICE_ACCOUNT = os.environ.get("SIGNING_SERVICE_ACCOUNT") # The SA tha
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD_SECRET_ID = os.environ.get("SENDER_PASSWORD_SECRET_ID") # e.g., "sender-password"
 SENDER_PASSWORD_SECRET_VERSION = os.environ.get("SENDER_PASSWORD_SECRET_VERSION", "latest")
+TIME_PERIOD_OPTIONS = ["day", "week"]
 
 # Fail fast if required configuration is missing
 if not all([PROJECT_ID, HTML_GCS_BUCKET, SIGNING_SERVICE_ACCOUNT]):
@@ -57,11 +52,12 @@ def get_secret(project_id, secret_id, version_id="latest"):
         logging.error(f"Failed to access secret {secret_id}: {e}", exc_info=True)
         raise
 
-# Define the RSS feed URL - "https://blog.google/products/google-cloud/rss/"
-rss_url = "https://snownews.appspot.com/feed"
-
 # Fetch the sender password from Secret Manager
-#sender_password = get_secret(PROJECT_ID, SENDER_PASSWORD_SECRET_ID, SENDER_PASSWORD_SECRET_VERSION)
+# Uncomment this line if email sending functionality is active and configured.
+# if SENDER_PASSWORD_SECRET_ID:
+#     sender_password = get_secret(PROJECT_ID, SENDER_PASSWORD_SECRET_ID, SENDER_PASSWORD_SECRET_VERSION)
+# else:
+#     logging.warning("SENDER_PASSWORD_SECRET_ID is not set. Email sending will not be available.")
 
 # Define storage client for file uploads
 storage_client = storage.Client(project=PROJECT_ID)
@@ -95,11 +91,16 @@ def getSignedURL(filename, bucket, action):
 
 # Function to upload bytes object to GCS bucket
 def upload_file(uploaded_file_contents, uploaded_file_name, bucket_name, type):
+    """Uploads file contents to a GCS bucket using a signed URL."""
     bucket = storage_client.bucket(bucket_name)
 
     try:
         url = getSignedURL(uploaded_file_name, bucket, "PUT")
         logging.info(f"Uploading to signed URL for {uploaded_file_name}")
+
+        # Ensure contents are bytes
+        if isinstance(uploaded_file_contents, str):
+            uploaded_file_contents = uploaded_file_contents.encode('utf-8')
 
         response = requests.put(url,
                                 uploaded_file_contents,
@@ -107,10 +108,15 @@ def upload_file(uploaded_file_contents, uploaded_file_name, bucket_name, type):
         response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
 
         logging.info(f"Successfully uploaded file '{uploaded_file_name}' to GCS bucket '{bucket_name}'.")
-        return "Success"
+        # Return the public-facing signed URL for viewing the uploaded file
+        view_url = getSignedURL(uploaded_file_name, bucket, "GET")
+        return view_url
     except requests.exceptions.RequestException as e:
         logging.error(f"Error uploading file '{uploaded_file_name}': {e.response.text}", exc_info=True)
-        return f"Error in uploading content: {e.response.status_code} {e.response.reason} {e.response.text}"
+        return None
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during file upload for '{uploaded_file_name}': {e}", exc_info=True)
+        return None
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -124,39 +130,56 @@ def index():
 
         logging.info(f"Received POST request: persona='{persona}', topic='{topic}', email='{email}', time_period='{time_period_value}'")
 
-        # Call newsletter_service.py to Generate Newsletter, pass values along
+        # Generate the newsletter content
         newsletter_value = newsletter_service.generate_newsletter_from_db(
             time_period=time_period_value,
             user_persona=persona,
             user_topic=topic,
         )
 
-        # Create html formatted email
-        newsletter_name = f"{persona}_{topic}_{time_period_value}_{datetime.date.today()}.html"
-        # Write newsletter to GCS
-        result = upload_file(uploaded_file_contents=newsletter_value,
-                             uploaded_file_name=newsletter_name,
-                             bucket_name=HTML_GCS_BUCKET,
-                             type="text/html")
-        logging.info(f"File upload result: {result}")
-        # Get signed url for said GCS file
-        signed_url = getSignedURL(newsletter_name,
-                                  storage_client.bucket(HTML_GCS_BUCKET),
-                                  "GET")
+        # Fetch dynamic settings for the template on every request
+        settings = db_service.get_components_from_firestore('gcp_newsletter', 'settings')
+        user_persona_options = settings.get('persona', []) if settings else []
+        user_topic_options = settings.get('topic', []) if settings else []
+
+        # Check if newsletter generation was successful before uploading
+        if not newsletter_value or newsletter_value.strip().startswith("Error:") or newsletter_value.strip().startswith("No articles"):
+            logging.warning(f"Newsletter generation failed or returned empty. Message: '{newsletter_value}'")
+            return render_template("index.html",
+                                   user_persona=user_persona_options,
+                                   user_topic=user_topic_options,
+                                   time_period=TIME_PERIOD_OPTIONS,
+                                   error_message=newsletter_value)
+
+        # Create a unique name for the HTML file
+        newsletter_name = f"{persona}_{topic}_{time_period_value}_{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}.html"
         
-        logging.info(f"Generated signed URL for viewing: {signed_url}")
-        return render_template("index.html",
-                               user_persona=USER_PERSONA,
-                               user_topic=USER_TOPIC,
-                               time_period=TIME_PERIOD,
-                               signed_url=signed_url,
-                               newsletter_name=newsletter_name)
+        # Upload the generated HTML to GCS and get the signed URL for viewing
+        signed_url = upload_file(uploaded_file_contents=newsletter_value,
+                                 uploaded_file_name=newsletter_name,
+                                 bucket_name=HTML_GCS_BUCKET,
+                                 type="text/html")
+
+        if signed_url:
+            logging.info(f"Generated signed URL for viewing: {signed_url}")
+            return render_template("index.html",
+                                   user_persona=user_persona_options,
+                                   user_topic=user_topic_options,
+                                   time_period=TIME_PERIOD_OPTIONS,
+                                   signed_url=signed_url,
+                                   newsletter_name=newsletter_name)
+        else:
+            return render_template("index.html",
+                                   user_persona=user_persona_options,
+                                   user_topic=user_topic_options,
+                                   time_period=TIME_PERIOD_OPTIONS,
+                                   error_message="Failed to upload the generated newsletter.")
 
     logging.info("Serving GET request for the index page.")
-    return render_template("index.html",
-                           user_persona=USER_PERSONA,
-                           user_topic=USER_TOPIC,
-                           time_period=TIME_PERIOD)
+    settings = db_service.get_components_from_firestore('gcp_newsletter', 'settings') or {}
+    user_persona_options = settings.get('persona', [])
+    user_topic_options = settings.get('topic', [])
+    return render_template("index.html", user_persona=user_persona_options, user_topic=user_topic_options, time_period=TIME_PERIOD_OPTIONS)
 
 
 if __name__ == "__main__":
