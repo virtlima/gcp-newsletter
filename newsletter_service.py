@@ -1,9 +1,13 @@
 import feedparser
 import datetime
 import ssl
+import logging
 import gemini_wrapper, email_service, db_service
 import os
 from jinja2 import Environment, FileSystemLoader
+
+
+logger = logging.getLogger(__name__)
 
 """
 Function to generate a newsletter from RSS feed.
@@ -17,76 +21,83 @@ Arguments:
 Response:
   - newsletter (string): formatted newsletter with recommendation and all article summaries
 """
-# Getting all personas and topics stored in settings document in the newsletter_components collection
-get_persona = db_service.get_components_from_firestore(
-    'gcp_newsletter', 'settings')['settings']['persona']
-get_topic = db_service.get_components_from_firestore(
-    'gcp_newsletter', 'settings')['settings']['topic']
-
-# Create a matrix to iterate through every combination of persona and topics
-persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
 
 
-def get_newsletter_from_sources(source="https://snownews.appspot.com/feed",
-                                num_days=1):
-
-    # Parse the RSS feed
+def process_daily_articles(source="https://snownews.appspot.com/feed",
+                           num_days=1):
+    """
+    Fetches articles from an RSS feed, generates summaries and recommendations,
+    and stores them in Firestore. Designed to be run as a background task.
+    """
+    logger.info(f"Starting article processing from source: {source} for the last {num_days} day(s).")
+    # This is a security risk and should be avoided in production.
+    # It's better to ensure the server environment has the correct CA certificates.
+    logger.warning("Disabling SSL certificate verification for feedparser.")
     ssl._create_default_https_context = ssl._create_unverified_context
     feed = feedparser.parse(source)
 
     entries = []
+    target_date = datetime.date.today() - datetime.timedelta(days=num_days)
+    logger.info(f"Filtering articles for target date: {target_date.strftime('%Y-%m-%d')}")
 
-    # Extract the entries depending on time period specified
     for entry in feed.entries:
-        # Check if the entry was published within the last week
         published_date = datetime.datetime(*entry.published_parsed[:6])
-        time_period = datetime.date.today() - datetime.timedelta(days=num_days)
-        if published_date.date() == time_period:
+        if published_date.date() == target_date:
             entries.append({
                 "title": entry.title,
                 "link": entry.link,
                 "published": entry.published,
                 "metadata": entry.summary,
             })
-
-    print(len(entries))
-
+    
+    logger.info(f"Found {len(entries)} articles for the target date.")
     if not entries:
-        return "No articles found for that day"
+        logger.warning("No articles found for the target date. Exiting process.")
+        return
     
-    # Generate summaries
-    summaries_list = gemini_wrapper.generate_summaries(entries)
-    
-    day_summaries = {
-        'summaries': summaries_list,
-        'timestamp': datetime.datetime.now()
-    }
+    try:
+        # 1. Generate and store summaries
+        summaries_list = gemini_wrapper.generate_summaries(entries)
+        if not summaries_list:
+            logger.error("Summary generation returned no results.")
+            return
+            
+        day_summaries = {
+            'summaries': summaries_list,
+            'timestamp': datetime.datetime.now(datetime.timezone.utc)
+        }
+        db_service.write_to_firestore('newsletter_summaries', day_summaries, num_days=num_days)
+        
+        # 2. Generate and store recommendations for all personas and topics
+        settings = db_service.get_components_from_firestore('gcp_newsletter', 'settings')
+        if not settings:
+            logger.error("Failed to retrieve settings from Firestore. Cannot generate recommendations.")
+            return
+        
+        get_persona = settings['settings']['persona']
+        get_topic = settings['settings']['topic']
+        persona_topic_matrix = [(p, t) for p in get_persona for t in get_topic]
+        
+        all_recommendations = {}
+        for persona, topic in persona_topic_matrix:
+            logger.info(f"Generating recommendations for persona: {persona}, topic: {topic}")
+            rec_json = gemini_wrapper.generate_recommendation(user_topic=topic, user_persona=persona, summaries=summaries_list)
+            all_recommendations[f"{persona}_{topic}"] = rec_json
+            
+        all_recommendations['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
+        db_service.write_to_firestore('newsletter_recommendations', all_recommendations, num_days=num_days)
+        
+        logger.info("Successfully processed and stored summaries and recommendations.")
+    except Exception as e:
+        logger.error(f"An error occurred during article processing: {e}", exc_info=True)
+        raise
 
-    # Write summaries to firestore
-    db_service.write_to_firestore('newsletter_summaries',
-                                                 day_summaries, num_days=num_days)
-
-    # Create a dictionary to store recommendations for all persona-topic combinations
-    all_recommendations = {}
-
-    for persona, topic in persona_topic_matrix:
-        print(f"Processing persona: {persona}, topic: {topic}")
-        rec_json = gemini_wrapper.generate_recommendation(user_topic=topic,
-                                                          user_persona=persona,
-                                                          summaries=summaries_list)
-
-        # Store recommendations under the corresponding persona-topic key
-        all_recommendations[f"{persona}_{topic}"] = rec_json
-
-    all_recommendations['timestamp'] = datetime.datetime.now()
-
-    # Write all recommendations to a single document in Firestore
-    db_service.write_to_firestore('newsletter_recommendations',
-                                       all_recommendations, num_days=num_days)
 
 def _render_newsletter_html(summaries, recommendations, user_persona, user_topic):
     """Helper function to render the newsletter HTML."""
+    logger.info(f"Rendering HTML for persona: '{user_persona}', topic: '{user_topic}'")
     if not summaries or not recommendations:
+        logger.warning("No summaries or recommendations found for the selected period. Returning empty message.")
         return "No articles found for the selected period."
 
     # Get the list of dates and format them for Jinja Template
@@ -99,49 +110,60 @@ def _render_newsletter_html(summaries, recommendations, user_persona, user_topic
             formatted_date = temp_date.strftime("%B %d, %Y")
             date_list.append(formatted_date)
         except ValueError:
-            continue # Skip keys that are not dates, like 'timestamp'
+            # This will gracefully skip non-date keys like 'timestamp'
+            logger.debug(f"Skipping key '{date}' as it is not a valid date.")
+            continue
 
     # Format output through Jinja2 template
-    env = Environment(loader=FileSystemLoader('assets'))
-    template = env.get_template('email_template.html')
+    try:
+        env = Environment(loader=FileSystemLoader('assets'))
+        template = env.get_template('email_template.html')
 
-    # Fill in values to render newsletter. Gets passed to Jinja2 template
-    return template.render(
-        recommended_articles=recommendations,
-        all_articles=summaries,
-        dates=enumerate(sorted_dates),
-        formatted_dates=date_list,
-        user_persona_topic=f"{user_persona}_{user_topic}",
-        year=datetime.datetime.now().year)
+        # Fill in values to render newsletter. Gets passed to Jinja2 template
+        return template.render(
+            recommended_articles=recommendations,
+            all_articles=summaries,
+            dates=enumerate(sorted_dates),
+            formatted_dates=date_list,
+            user_persona_topic=f"{user_persona}_{user_topic}",
+            year=datetime.datetime.now().year)
+    except Exception as e:
+        logger.error(f"Error rendering Jinja2 template: {e}", exc_info=True)
+        return "Error: Could not render the newsletter template."
 
 def generate_newsletter_from_db(time_period="day",
                                 user_topic="Any",
                                 user_persona="All"):
-
+    """
+    Generates a single newsletter HTML string by fetching pre-processed data
+    from Firestore for a given time period, persona, and topic.
+    """
+    logger.info(f"Generating newsletter from DB for period: '{time_period}', persona: '{user_persona}', topic: '{user_topic}'")
     if time_period.lower() == "day":
         n = 1
     elif time_period.lower() == "week":
         n = 7
     else:
-        print("Please define time period")
+        logger.error(f"Invalid time period specified: '{time_period}'")
         return "Invalid time period specified. Please use 'day' or 'week'."
 
-    summaries = db_service.get_documents_for_past_n_days('newsletter_summaries', n)
-    recommendations = db_service.get_documents_for_past_n_days('newsletter_recommendations', n)
+    try:
+        summaries = db_service.get_documents_for_past_n_days('newsletter_summaries', n)
+        recommendations = db_service.get_documents_for_past_n_days('newsletter_recommendations', n)
+        
+        if not summaries or not recommendations:
+            logger.warning(f"No data found in Firestore for the past {n} days.")
+            # We can still try to render, the render function will handle the empty state.
 
-    return _render_newsletter_html(summaries, recommendations, user_persona, user_topic)
+        return _render_newsletter_html(summaries, recommendations, user_persona, user_topic)
+    except Exception as e:
+        logger.error(f"Failed to generate newsletter from DB: {e}", exc_info=True)
+        return "Error: Could not retrieve data to generate the newsletter."
 
-def send_email_test():
-    _, summaries, rec_json = get_newsletter_from_sources()
-    email_service.send_email(sender_email="geiger.ljo@gmail.com",
-                             sender_password=os.getenv("SENDER_PASSWORD"),
-                             receiver_email="lukasgeiger@google.com",
-                             subject="GCP Newsletter",
-                             recommendations=rec_json,
-                             summaries=summaries)
-
-# Enable this and run python3 newsletter_service.py for testing
+# This main block is useful for triggering the data processing job independently,
+# for example, via a scheduled Cloud Function or Cloud Run Job.
 if __name__ == "__main__":
-    get_newsletter_from_sources() # This will run when the script is executed
-    # generate_newsletter_from_db(wr_summaries, wr_rec)
-    # send_email_test() # Call other functions if needed
+    # Set up basic logging for standalone script execution
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger.info("Running newsletter_service as a standalone script.")
+    process_daily_articles()

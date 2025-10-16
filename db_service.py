@@ -75,7 +75,13 @@ def get_documents_for_past_n_days(collection, n=7):
     try:
         today = datetime.date.today()
         n_docs = {}
-        for i in range(n):  # Iterate through the past N days
+        # If n=1 (day), we want yesterday's articles. The loop should be range(1, 2) to get `days=1`.
+        # If n=7 (week), we want the last 7 days. The loop should be range(1, 8).
+        # The data processing job runs for the *previous* day, so we should start from `days=1`.
+        start_day = 1
+        end_day = n + 1
+
+        for i in range(start_day, end_day):  # Iterate through the past N days, starting from yesterday
             past_date = today - datetime.timedelta(days=i)
             date_str = past_date.strftime("%m_%d_%Y")  # Format the date string
             doc_ref = db.collection(collection).document(date_str)

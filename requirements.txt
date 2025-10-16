@@ -1,6 +1,8 @@
 flask
 firebase-admin==6.6.*
 google-genai
+google-cloud-logging
+google-cloud-secret-manager
 legacy-cgi
 feedparser
 python-dotenv
